@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebPEC</title>
+  <link rel="icon" href="/web/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/web/estilo.css">
+</head>
+<body>
+  <div class="fondo" aria-hidden="true">
+    <div class="mancha m1"></div>
+    <div class="mancha m2"></div>
+    <div class="mancha m3"></div>
+    <div class="marca-agua">WebPEC</div>
+  </div>
+
+  <header class="cabecera">
+    <div class="marca">
+      <img src="/web/icono.svg" alt="" class="logo">
+      <div>
+        <h1>Web<span>PEC</span></h1>
+        <p id="subtitulo">Avisos de pérdida de evaluación continua</p>
+      </div>
+    </div>
+    <nav class="pestanas" role="tablist">
+      <button class="pestana activa" data-vista="informes">Informes</button>
+      <button class="pestana" data-vista="avisos">Avisos <span class="contador" id="contador-avisos"></span></button>
+      <button class="pestana" data-vista="registro">Registro</button>
+      <button class="pestana" data-vista="modulos">Módulos</button>
+      <button class="pestana" data-vista="config">Configuración</button>
+      <button class="pestana apagar" id="boton-cerrar" title="Cerrar WebPEC" aria-label="Cerrar WebPEC">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ======================================================= INFORMES -->
+    <section class="vista activa" id="vista-informes">
+      <div class="tarjeta zona-subida" id="zona-subida" tabindex="0">
+        <input type="file" id="selector" accept=".pdf,application/pdf" multiple hidden>
+        <svg viewBox="0 0 48 48" class="icono-subida" aria-hidden="true">
+          <path d="M24 31V11m0 0-8 8m8-8 8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 29v6a4 4 0 0 0 4 4h22a4 4 0 0 0 4-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <h2>Arrastra aquí los PDF de faltas</h2>
+        <p>Listados de faltas totales de Raíces, con cualquier nombre. O <u>haz clic para elegirlos</u>.</p>
+      </div>
+
+      <div class="titulo-seccion">
+        <h2>Informes pendientes</h2>
+        <button class="boton suave" id="recargar-informes">Actualizar</button>
+      </div>
+      <div id="lista-informes"></div>
+
+      <div class="barra-procesar oculto" id="barra-procesar">
+        <div id="resumen-previsto"></div>
+        <button class="boton principal grande" id="boton-procesar">Generar avisos</button>
+      </div>
+
+      <div id="resultado-proceso"></div>
+
+      <details class="tarjeta plegable">
+        <summary>Informes ya procesados</summary>
+        <div id="lista-procesados"></div>
+      </details>
+    </section>
+
+    <!-- ========================================================= AVISOS -->
+    <section class="vista" id="vista-avisos">
+      <div class="titulo-seccion">
+        <div class="interruptor" role="tablist">
+          <button class="activo" data-carpeta="pendientes">Pendientes de entregar</button>
+          <button data-carpeta="realizados">Entregados</button>
+        </div>
+        <div class="filtros">
+          <select id="filtro-profesor"><option value="">Todos los profesores</option></select>
+          <select id="filtro-tipo">
+            <option value="">Todos los tipos</option>
+            <option value="AVISO_PEC">Aviso 7,5 %</option>
+            <option value="PEC">Pérdida 15 %</option>
+          </select>
+          <input type="search" id="filtro-texto" placeholder="Buscar alumno, grupo, módulo…">
+        </div>
+      </div>
+
+      <div class="tarjeta sin-relleno">
+        <table class="tabla" id="tabla-avisos">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" id="marcar-todos" aria-label="Marcar todos"></th>
+              <th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num">FI</th>
+              <th>Informe</th><th>Profesor/a</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="vacio oculto" id="avisos-vacio"></div>
+      </div>
+
+      <div class="barra-seleccion oculto" id="barra-seleccion">
+        <span id="texto-seleccion"></span>
+        <div class="acciones">
+          <button class="boton principal" id="accion-imprimir">Imprimir</button>
+          <button class="boton" id="accion-zip">Descargar ZIP</button>
+          <button class="boton" id="accion-mover"></button>
+          <button class="boton peligro" id="accion-borrar">Borrar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= REGISTRO -->
+    <section class="vista" id="vista-registro">
+      <div class="titulo-seccion">
+        <h2>Registro de avisos emitidos</h2>
+        <input type="search" id="filtro-registro" placeholder="Buscar…">
+      </div>
+      <p class="nota">Cada aviso queda anotado aquí y no se vuelve a generar, aunque se borre el documento.</p>
+      <div class="tarjeta sin-relleno">
+        <table class="tabla" id="tabla-registro">
+          <thead>
+            <tr><th>Informe</th><th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th>
+                <th class="num">FI</th><th class="num">Umbral</th><th>Profesor/a</th><th>Generado</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================================================== MÓDULOS -->
+    <section class="vista" id="vista-modulos">
+      <div class="titulo-seccion"><h2>Módulos</h2></div>
+      <p class="nota">Los umbrales son el 7,5 % y el 15 % de las horas lectivas totales. Los módulos nuevos se
+        registran solos al subir su primer informe. Las siglas de un módulo con avisos no se pueden cambiar.</p>
+      <div class="tarjeta sin-relleno">
+        <table class="tabla" id="tabla-modulos">
+          <thead>
+            <tr><th>Unidad</th><th>Siglas</th><th>Módulo (en el informe)</th><th>Nombre en los avisos</th>
+                <th class="num">Horas</th><th class="num">7,5 %</th><th class="num">15 %</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="titulo-seccion"><h2>Profesorado</h2></div>
+      <p class="nota">Raíces escribe los nombres sin tildes: aquí se indica cómo deben aparecer en la firma.</p>
+      <div class="tarjeta sin-relleno">
+        <table class="tabla" id="tabla-profesores">
+          <thead><tr><th>En el informe</th><th>Nombre para la firma</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================================================== CONFIGURACIÓN -->
+    <section class="vista" id="vista-config">
+      <form class="tarjeta formulario" id="form-config">
+        <h2>Centro</h2>
+        <div class="rejilla">
+          <label>Centro<input name="centro"></label>
+          <label>Localidad (para «En …, a …»)<input name="localidad"></label>
+          <label>Jefatura de Estudios<input name="jefatura_estudios"></label>
+          <label>Dirección<input name="direccion"></label>
+        </div>
+
+        <h2>Documentos</h2>
+        <div class="rejilla">
+          <label>Fecha en los nombres de fichero
+            <select name="formato_fecha_fichero">
+              <option value="AAAAMMDD">AAAAMMDD (20261026_…) — se ordenan por fecha</option>
+              <option value="DDMMAAAA">DDMMAAAA (26102026_…)</option>
+            </select>
+          </label>
+          <label>Conversión a PDF
+            <select name="conversor_pdf">
+              <option value="auto">Automática</option>
+              <option value="libreoffice">LibreOffice</option>
+              <option value="word">Microsoft Word</option>
+              <option value="ninguno">Ninguna (dejar en .docx)</option>
+            </select>
+            <small id="conversor-detectado"></small>
+          </label>
+        </div>
+
+        <h2>Aplicación</h2>
+        <div class="rejilla">
+          <label>Puerto<input name="puerto" inputmode="numeric"></label>
+          <label>Acceso desde otros ordenadores
+            <select name="acceso_red">
+              <option value="no">No, solo desde este ordenador</option>
+              <option value="si">Sí, desde la red del centro</option>
+            </select>
+            <small>El puerto y el acceso en red se aplican al volver a arrancar WebPEC.</small>
+          </label>
+        </div>
+        <p class="nota" id="carpeta-datos"></p>
+        <div class="pie-formulario"><button class="boton principal" type="submit">Guardar configuración</button></div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="pie" id="pie">
+    <p>Para consultar dudas, errores o mejoras, enviar un correo a:
+      <a href="mailto:jose.jimenezcastillo@educa.madrid.org">jose.jimenezcastillo@educa.madrid.org</a></p>
+    <p>(c) Departamento de Informática - IES Rosa Chacel - Madrid</p>
+  </footer>
+
+  <div class="modal oculto" id="modal" role="dialog" aria-modal="true">
+    <div class="caja-modal">
+      <h3 id="modal-titulo"></h3>
+      <div id="modal-texto"></div>
+      <div class="acciones-modal" id="modal-acciones"></div>
+    </div>
+  </div>
+  <div class="avisos-flotantes" id="tostadas"></div>
+  <iframe id="marco-impresion" class="oculto" title="Impresión"></iframe>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>

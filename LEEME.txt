@@ -1,0 +1,67 @@
+﻿WebPEC — AVISOS DE PÉRDIDA DE EVALUACIÓN CONTINUA
+=================================================
+
+Aplicación web local para generar los avisos del 7,5 % y las confirmaciones de pérdida del
+15 % a partir de los "Listados de faltas totales" de Raíces.
+
+
+PUESTA EN MARCHA
+----------------
+1. El ordenador necesita Python 3.9 o posterior (https://www.python.org; al instalarlo,
+   marcar "Add Python to PATH"). No hay que instalar nada más: las librerías van en lib\.
+2. Copiar la carpeta WebPEC completa (por ejemplo, al escritorio).
+3. Arrancar. El programa es el mismo en todos los sistemas (webpec.py); solo cambia el
+   lanzador de doble clic:
+     Windows:  doble clic en  WebPEC.bat
+     Linux:    doble clic en  WebPEC.sh  (si el explorador pregunta, elegir "Ejecutar"),
+               o en una terminal:  ./WebPEC.sh   o   python3 webpec.py
+   Se abre una ventana de terminal y, enseguida, el navegador con la aplicación
+   (http://localhost:8765). La terminal debe quedar abierta mientras se usa WebPEC.
+4. Para terminar: botón de apagado (arriba a la derecha) o cerrar la ventana de terminal.
+
+Truco: crear un acceso directo a WebPEC.bat (o WebPEC.sh) en el escritorio.
+
+OJO: abrir web\index.html con doble clic NO funciona. Siempre hay que entrar con WebPEC.bat.
+
+Para pasar los avisos a PDF hace falta LibreOffice o Microsoft Word en el ordenador.
+Si no hay ninguno, se generan en .docx.
+
+
+USO
+---
+Informes      Arrastrar los PDF de faltas (con cualquier nombre). Para cada uno se ve el
+              módulo, la unidad, el profesor y qué alumnos recibirán aviso. Si el módulo o el
+              profesor son nuevos, se piden sus datos (horas lectivas totales, siglas, nombre
+              para la firma). Después, "Generar avisos".
+Avisos        Avisos pendientes de entregar y entregados, de todo el departamento, con filtros
+              por profesor, tipo y texto. Se marcan los que se quieran y se pueden imprimir
+              (todos en un solo PDF), descargar en ZIP, pasar a "Entregados" o borrar.
+              Después de imprimir o descargar, pregunta qué hacer con ellos.
+Registro      Todos los avisos emitidos. Un aviso nunca se repite, aunque se borre el documento.
+Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
+Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
+              (AAAAMMDD o DDMMAAAA), conversor a PDF, puerto y acceso desde la red.
+
+
+REGLAS
+------
+- Se cuenta la columna FI (faltas injustificadas) del informe.
+- FI >= 7,5 % de las horas del módulo y sin aviso previo -> AVISO_PEC (aunque ya pase del 15 %).
+- FI >= 15 %, avisado en un informe anterior y con más faltas que cuando se le avisó -> PEC.
+  Si no ha acumulado más faltas desde el aviso, espera al siguiente informe.
+
+
+DATOS (todo dentro de esta carpeta)
+-----------------------------------
+INFORMES_NUEVOS\             PDF subidos que aún no tienen todos los datos
+INFORMES_FALTAS_PROCESAR\    informes listos, renombrados a FECHA_GRUPO_MODULO_Faltas.pdf
+INFORMES_FALTAS_PROCESADOS\  informes ya procesados
+AVISOS_PENDIENTES\<prof>\    avisos generados, sin entregar
+AVISOS_REALIZADOS\<prof>\    avisos entregados
+PEC_MODULOS.xlsx             módulos y profesores (se puede abrir con Excel, pero hay que
+                             cerrarlo antes de registrar o cambiar módulos en WebPEC)
+registro_avisos.csv          registro de avisos emitidos (no borrar filas)
+configuracion.ini            configuración (también editable desde la aplicación)
+plantillas\                  plantillas .docx de los dos documentos
+
+Para hacer copia de seguridad basta con copiar la carpeta entera.

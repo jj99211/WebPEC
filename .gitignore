@@ -1,0 +1,11 @@
+# Datos de cada instalación: no forman parte del programa
+INFORMES_NUEVOS/
+INFORMES_FALTAS_PROCESAR/
+INFORMES_FALTAS_PROCESADOS/
+AVISOS_PENDIENTES/
+AVISOS_REALIZADOS/
+COPIAS_SEGURIDAD/
+registro_avisos.csv
+PEC_MODULOS.xlsx
+configuracion.ini
+__pycache__/
