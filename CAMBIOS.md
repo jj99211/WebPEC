@@ -8,6 +8,14 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 2.02 — 2026-10-26
+
+- Icono en el escritorio con un doble clic: `Crear_acceso_directo.bat` (Windows) y
+  `Crear_acceso_directo.sh` (Linux), o `webpec.py --crear-acceso-directo`.
+  - Windows: acceso directo «WebPEC» con el escudo; la ventana del servidor arranca minimizada.
+  - Linux: icono en el escritorio y en el menú de aplicaciones.
+- Escudo en formato `.ico` (`web/escudo.ico`).
+
 ## 2.01 — 2026-10-26
 
 - El escudo del IES Rosa Chacel sustituye al logo anterior (cabecera, icono de la pestaña

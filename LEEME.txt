@@ -20,7 +20,10 @@ PUESTA EN MARCHA
    (http://localhost:8765). La terminal debe quedar abierta mientras se usa WebPEC.
 4. Para terminar: botón de apagado (arriba a la derecha) o cerrar la ventana de terminal.
 
-Truco: crear un acceso directo a WebPEC.bat (o WebPEC.sh) en el escritorio.
+ICONO EN EL ESCRITORIO: doble clic en  Crear_acceso_directo.bat  (Windows) o
+Crear_acceso_directo.sh  (Linux). Crea el icono «WebPEC» con el escudo del instituto (en Linux,
+también en el menú de aplicaciones). Si se mueve la carpeta, hay que volver a crearlo.
+En Windows, la ventana del servidor arranca minimizada en la barra de tareas.
 
 OJO: abrir web\index.html con doble clic NO funciona. Siempre hay que entrar con WebPEC.bat.
 

@@ -6,15 +6,20 @@ Arranca un pequeño servidor en este ordenador y abre el navegador en http://loc
 Mientras se usa, la ventana del programa debe quedar abierta; al cerrarla se detiene.
 
 Uso:
-  webpec.py                 arranca y abre el navegador
-  webpec.py --sin-navegador arranca sin abrir el navegador
+  webpec.py                       arranca y abre el navegador
+  webpec.py --sin-navegador       arranca sin abrir el navegador
+  webpec.py --crear-acceso-directo  crea el icono de WebPEC en el escritorio
 """
 
 import argparse
 import json
 import mimetypes
+import os
+import shutil
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import traceback
 import webbrowser
@@ -204,6 +209,107 @@ def ya_en_marcha(puerto):
         return s.connect_ex(("127.0.0.1", puerto)) == 0
 
 
+# ------------------------------------------------------- acceso directo ---
+
+DESCRIPCION = "Avisos de pérdida de evaluación continua"
+
+
+def crear_acceso_directo():
+    """Crea el icono de WebPEC en el escritorio. Devuelve un texto con lo que se ha hecho."""
+    if os.name == "nt":
+        return acceso_windows()
+    if sys.platform.startswith("linux"):
+        return acceso_linux()
+    raise RuntimeError("Solo se pueden crear accesos directos en Windows y Linux")
+
+
+def acceso_windows():
+    def texto(ruta):  # cadena entre comillas simples de PowerShell
+        return "'" + str(ruta).replace("'", "''") + "'"
+
+    script = "\n".join([
+        "$ErrorActionPreference = 'Stop'",
+        "$escritorio = [Environment]::GetFolderPath('Desktop')",
+        "$acceso = (New-Object -ComObject WScript.Shell).CreateShortcut("
+        "(Join-Path $escritorio 'WebPEC.lnk'))",
+        f"$acceso.TargetPath = {texto(BASE / 'WebPEC.bat')}",
+        f"$acceso.WorkingDirectory = {texto(BASE)}",
+        f"$acceso.IconLocation = {texto(BASE / 'web' / 'escudo.ico')} + ',0'",
+        "$acceso.WindowStyle = 7",  # ventana del servidor minimizada
+        f"$acceso.Description = {texto('WebPEC - ' + DESCRIPCION)}",
+        "$acceso.Save()",
+    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        ps1 = Path(tmp) / "acceso_directo.ps1"
+        ps1.write_text(script, encoding="utf-8-sig")
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                            "-File", str(ps1)], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip() or "PowerShell no ha podido crearlo")
+    return "Creado el icono «WebPEC» en el escritorio."
+
+
+def escritorio_linux():
+    try:
+        r = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, timeout=5)
+        carpeta = Path(r.stdout.strip())
+        # xdg-user-dir devuelve la carpeta personal si no hay escritorio configurado
+        if r.stdout.strip() and carpeta.is_dir() and carpeta != Path.home():
+            return carpeta
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for nombre in ("Escritorio", "Desktop"):
+        if (Path.home() / nombre).is_dir():
+            return Path.home() / nombre
+    return None
+
+
+def acceso_linux():
+    lanzador = BASE / "WebPEC.sh"
+    try:
+        lanzador.chmod(0o755)
+    except OSError:
+        pass  # en discos NTFS o FAT no se pueden cambiar permisos (ya son ejecutables)
+    exec_ = '"' + "".join("\\" + c if c in '"`$\\' else c for c in str(lanzador)) + '"'
+    contenido = "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        "Version=1.0",
+        "Name=WebPEC",
+        f"Comment={DESCRIPCION}",
+        f"Exec={exec_}",
+        f"Path={BASE}",
+        f"Icon={BASE / 'web' / 'escudo.png'}",
+        "Terminal=true",
+        "Categories=Office;",
+        "",
+    ])
+    datos = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    destinos = [("en el menú de aplicaciones", datos / "applications")]
+    escritorio = escritorio_linux()
+    if escritorio:
+        destinos.insert(0, ("en el escritorio", escritorio))
+    hechos = []
+    for donde, carpeta in destinos:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        fichero = carpeta / "WebPEC.desktop"
+        fichero.write_text(contenido, encoding="utf-8")
+        fichero.chmod(0o755)
+        if shutil.which("gio"):  # GNOME: marcarlo como de confianza para poder abrirlo
+            subprocess.run(["gio", "set", str(fichero), "metadata::trusted", "true"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        hechos.append(donde)
+    mensaje = f"Creado el icono «WebPEC» {' y '.join(hechos)}."
+    if escritorio:
+        mensaje += ("\nSi al abrirlo el escritorio pregunta, elige «Permitir ejecución» "
+                    "(KDE) o «Permitir lanzar» (GNOME).")
+    if shutil.which("notify-send"):  # aviso visible si se ha lanzado sin terminal
+        subprocess.run(["notify-send", "-i", str(BASE / "web" / "escudo.png"), "WebPEC",
+                        mensaje.splitlines()[0]],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return mensaje
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -211,7 +317,17 @@ def main():
                         help="no abrir el navegador al arrancar")
     parser.add_argument("--carpeta", type=Path, default=BASE,
                         help="carpeta de datos (por defecto, la del programa)")
+    parser.add_argument("--crear-acceso-directo", action="store_true",
+                        help="crear el icono de WebPEC en el escritorio y terminar")
     args = parser.parse_args()
+
+    if args.crear_acceso_directo:
+        try:
+            print(crear_acceso_directo())
+            print("Si mueves la carpeta de WebPEC, vuelve a crear el acceso directo.")
+        except (RuntimeError, OSError) as e:
+            sys.exit(f"No se ha podido crear el acceso directo: {e}")
+        return
 
     mimetypes.add_type("application/javascript", ".js")
     mimetypes.add_type("image/svg+xml", ".svg")
