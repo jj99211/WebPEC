@@ -8,6 +8,11 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 2.03 — 2026-10-26
+
+- Corregido: en el ZIP de instalación, `WebPEC.sh`, `Crear_acceso_directo.sh` y `webpec.py` no
+  tenían permiso de ejecución, y en Linux el doble clic no los arrancaba.
+
 ## 2.02 — 2026-10-26
 
 - Icono en el escritorio con un doble clic: `Crear_acceso_directo.bat` (Windows) y
