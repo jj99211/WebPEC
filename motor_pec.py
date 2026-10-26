@@ -11,6 +11,7 @@ Carpetas (dentro de la carpeta del programa; se crean solas si no existen):
   INFORMES_FALTAS_PROCESADOS/    informes ya procesados
   AVISOS_PENDIENTES/<profesor>/  documentos generados
   AVISOS_REALIZADOS/<profesor>/  documentos ya entregados
+  COPIAS_SEGURIDAD/              copias del registro y de la hoja antes de vaciarlos
 
 Reglas (valor de referencia: columna FI, faltas injustificadas):
   - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
@@ -55,6 +56,7 @@ PROCESAR = "INFORMES_FALTAS_PROCESAR"
 PROCESADOS = "INFORMES_FALTAS_PROCESADOS"
 PENDIENTES = "AVISOS_PENDIENTES"
 REALIZADOS = "AVISOS_REALIZADOS"
+COPIAS = "COPIAS_SEGURIDAD"
 
 # Nombres que vienen escritos en las plantillas y se sustituyen por los de configuracion.ini
 JEFATURA_PLANTILLA = "Irene Rodil Jiménez"
@@ -713,67 +715,58 @@ class Motor:
         return f"{fecha_fichero(config, informe['fecha'])}_{para_fichero(informe['unidad'])}_" \
                f"{modulo['siglas']}_Faltas.pdf"
 
-    def estado(self):
-        """Clasifica lo que se pueda y describe cada informe pendiente y lo que generaría."""
-        self.clasificar()
-        hoja, config = self.hoja(), self.config()
-        registro = leer_registro(self.base / REGISTRO)
-        informes, leidos = [], []
-        for carpeta in (NUEVOS, PROCESAR):
-            for ruta in self._pdfs(carpeta):
-                item = {"id": f"{carpeta}/{ruta.name}", "archivo": ruta.name,
-                        "carpeta": carpeta}
-                try:
-                    leidos.append((item, leer_informe(ruta)))
-                except ErrorInforme as e:
-                    item["error"] = str(e)
-                informes.append(item)
-
-        # Por orden de fecha y acumulando lo previsto, como al procesar
-        leidos.sort(key=lambda r: (r[1]["fecha"], r[1]["unidad"], r[1]["modulo"]))
-        simulado = list(registro)
-        for item, informe in leidos:
-            modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
-            firma = hoja.firma(informe["profesor"])
-            item.update({
-                "unidad": informe["unidad"], "profesor": informe["profesor"],
-                "modulo": informe["modulo"], "fecha": informe["fecha"].strftime("%d/%m/%Y"),
-                "orden": informe["fecha"].isoformat(), "alumnos": len(informe["alumnos"]),
-                "firma": firma,
-            })
-            if firma is None:
-                item["falta_firma"] = {"profesor": informe["profesor"],
-                                       "propuesta": nombre_completo(informe["profesor"])}
-            if modulo is None:
-                item["falta_modulo"] = {
-                    "unidad": informe["unidad"], "en_informe": informe["modulo"],
-                    "profesor": informe["profesor"],
-                    "siglas": siglas_propuestas(informe["modulo"],
-                                                hoja.siglas_usadas(informe["unidad"])),
-                    "nombre": informe["modulo"].upper(),
-                }
-                continue
-            item["datos_modulo"] = {
-                "siglas": modulo["siglas"], "nombre": modulo["nombre"],
-                "horas": formato_umbral(modulo["horas"]),
-                "umbral_75": formato_umbral(modulo["umbral_75"]),
-                "umbral_15": formato_umbral(modulo["umbral_15"]),
+    def _describir(self, ruta, hoja, config):
+        """Datos de un informe pendiente, sin mover ni cambiar nada. Devuelve (item, informe)."""
+        carpeta = ruta.parent.name
+        item = {"id": f"{carpeta}/{ruta.name}", "archivo": ruta.name, "carpeta": carpeta}
+        try:
+            informe = leer_informe(ruta)
+        except ErrorInforme as e:
+            item["error"] = str(e)
+            return item, None
+        modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
+        firma = hoja.firma(informe["profesor"])
+        item.update({
+            "unidad": informe["unidad"], "profesor": informe["profesor"],
+            "modulo": informe["modulo"], "fecha": informe["fecha"].strftime("%d/%m/%Y"),
+            "orden": informe["fecha"].isoformat(), "alumnos": len(informe["alumnos"]),
+            "firma": firma,
+        })
+        if firma is None:
+            item["falta_firma"] = {"profesor": informe["profesor"],
+                                   "propuesta": nombre_completo(informe["profesor"])}
+        if modulo is None:
+            item["falta_modulo"] = {
+                "unidad": informe["unidad"], "en_informe": informe["modulo"],
+                "profesor": informe["profesor"],
+                "siglas": siglas_propuestas(informe["modulo"],
+                                            hoja.siglas_usadas(informe["unidad"])),
+                "nombre": informe["modulo"].upper(),
             }
-            nombre = self._nombre_informe(config, informe, modulo)
-            if (self.base / PROCESADOS / nombre).exists() and item["carpeta"] == NUEVOS:
-                item["duplicado"] = f"Ya se procesó un informe {nombre}"
-                continue
-            item["previsto"] = evaluar(informe, modulo, simulado)
-            for a in item["previsto"]:
-                if a["tipo"]:
-                    simulado.append({"grupo": informe["unidad"], "modulo": modulo["siglas"],
-                                     "alumno": a["alumno"], "tipo": a["tipo"],
-                                     "fecha_informe": informe["fecha"].isoformat(),
-                                     "faltas_injustificadas": str(a["fi"])})
-            item["listo"] = firma is not None
+            return item, informe
+        item["datos_modulo"] = {
+            "siglas": modulo["siglas"], "nombre": modulo["nombre"],
+            "horas": formato_umbral(modulo["horas"]),
+            "umbral_75": formato_umbral(modulo["umbral_75"]),
+            "umbral_15": formato_umbral(modulo["umbral_15"]),
+        }
+        item["nombre_final"] = self._nombre_informe(config, informe, modulo)
+        if carpeta == NUEVOS and (self.base / PROCESADOS / item["nombre_final"]).exists():
+            item["duplicado"] = f"Ya se procesó un informe {item['nombre_final']}"
+        return item, informe
+
+    def _pendientes(self, hoja, config):
+        informes = [self._describir(ruta, hoja, config)[0]
+                    for carpeta in (NUEVOS, PROCESAR) for ruta in self._pdfs(carpeta)]
         informes.sort(key=lambda i: (i.get("orden", ""), i["archivo"]))
-        conversor = nombre_conversor(config["conversor_pdf"])
-        return {"informes": informes, "errores_hoja": hoja.errores, "conversor": conversor}
+        return informes
+
+    def estado(self):
+        """Informes pendientes de procesar, tal como están: no se mueve ni renombra nada."""
+        hoja, config = self.hoja(), self.config()
+        return {"informes": self._pendientes(hoja, config), "errores_hoja": hoja.errores,
+                "conversor": nombre_conversor(config["conversor_pdf"]),
+                "procesados": len(self._pdfs(PROCESADOS))}
 
     def borrar_informe(self, ident):
         ruta = self._ruta_informe(ident)
@@ -792,7 +785,10 @@ class Motor:
         return self._ruta_informe(ident)
 
     def procesar(self):
-        """Genera los avisos de todos los informes listos. Devuelve un resumen."""
+        """
+        Botón «Procesar informes»: renombra los informes que tienen todos los datos, genera sus
+        avisos y devuelve los que necesitan datos nuevos (módulo o profesor) para pedirlos.
+        """
         self.clasificar()
         hoja, config = self.hoja(), self.config()
         registro = leer_registro(self.base / REGISTRO)
@@ -826,8 +822,13 @@ class Motor:
             shutil.move(str(ruta), str(self.base / PROCESADOS / ruta.name))
             resumen["informes"].append({
                 "archivo": ruta.name, "modulo": modulo["nombre"], "unidad": informe["unidad"],
-                "profesor": firma, "situacion": situacion, "documentos": documentos,
+                "fecha": informe["fecha"].strftime("%d/%m/%Y"), "profesor": firma,
+                "situacion": situacion, "documentos": documentos,
             })
+
+        quedan = self._pendientes(hoja, config)
+        resumen["faltan_datos"] = [i for i in quedan if i.get("falta_firma") or i.get("falta_modulo")]
+        resumen["sin_procesar"] = [i for i in quedan if i.get("error") or i.get("duplicado")]
         return resumen
 
     def _generar(self, config, informe, modulo, firma, nuevos):
@@ -1008,6 +1009,62 @@ class Motor:
                 shutil.move(str(ruta), str(destino / ruta.name))
             hechos += 1
         return hechos
+
+    def contar_documentos(self):
+        return {clave: sum(1 for p in (self.base / carpeta).glob("*/*") if p.is_file())
+                for clave, carpeta in self.CARPETAS_DOCUMENTOS.items()}
+
+    def borrar_todos_documentos(self, cuales):
+        """cuales: 'pendientes', 'realizados' o 'todos'."""
+        if cuales not in ("pendientes", "realizados", "todos"):
+            raise ErrorPEC("Opción no válida")
+        claves = list(self.CARPETAS_DOCUMENTOS) if cuales == "todos" else [cuales]
+        borrados = 0
+        for clave in claves:
+            for ruta in (self.base / self.CARPETAS_DOCUMENTOS[clave]).glob("*/*"):
+                if ruta.is_file():
+                    ruta.unlink()
+                    borrados += 1
+        return borrados
+
+    def borrar_procesados(self):
+        rutas = self._pdfs(PROCESADOS)
+        for ruta in rutas:
+            ruta.unlink()
+        return len(rutas)
+
+    # ---- borrados completos de datos (con copia de seguridad)
+
+    def _copia_seguridad(self, nombre):
+        origen = self.base / nombre
+        if not origen.exists():
+            return None
+        carpeta = self.base / COPIAS
+        carpeta.mkdir(exist_ok=True)
+        destino = carpeta / f"{datetime.now():%Y%m%d_%H%M%S}_{nombre}"
+        shutil.copyfile(origen, destino)
+        return f"{COPIAS}/{destino.name}"
+
+    def vaciar_registro(self):
+        filas = leer_registro(self.base / REGISTRO)
+        copia = self._copia_seguridad(REGISTRO)
+        try:
+            (self.base / REGISTRO).unlink(missing_ok=True)
+        except PermissionError:
+            raise ErrorPEC(f"No se puede borrar {REGISTRO}: ciérralo en Excel y vuelve a intentarlo")
+        anotar_registro(self.base / REGISTRO, [])
+        return {"borrados": len(filas), "copia": copia}
+
+    def vaciar_hoja(self):
+        hoja = self.hoja()
+        cuantos = {"modulos": len(hoja.modulos), "profesores": len(hoja.profesores)}
+        copia = self._copia_seguridad(HOJA_MODULOS)
+        try:
+            crear_hoja_modulos(self.base / HOJA_MODULOS)
+        except PermissionError:
+            raise ErrorPEC(f"No se puede guardar {HOJA_MODULOS}: ciérrala en Excel o LibreOffice "
+                           f"y vuelve a intentarlo")
+        return dict(cuantos, copia=copia)
 
     # ---- registro
 

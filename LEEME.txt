@@ -1,5 +1,6 @@
 ﻿WebPEC — AVISOS DE PÉRDIDA DE EVALUACIÓN CONTINUA
 =================================================
+Versión: ver el fichero VERSION (historial en CAMBIOS.md)
 
 Aplicación web local para generar los avisos del 7,5 % y las confirmaciones de pérdida del
 15 % a partir de los "Listados de faltas totales" de Raíces.
@@ -29,16 +30,20 @@ Si no hay ninguno, se generan en .docx.
 
 USO
 ---
-Informes      Arrastrar los PDF de faltas (con cualquier nombre). Para cada uno se ve el
-              módulo, la unidad, el profesor y qué alumnos recibirán aviso. Si el módulo o el
-              profesor son nuevos, se piden sus datos (horas lectivas totales, siglas, nombre
-              para la firma). Después, "Generar avisos".
+Informes      Arrastrar los PDF de faltas (con cualquier nombre). Se listan como pendientes,
+              con el nombre que recibirán. Nada se toca hasta pulsar "Procesar informes":
+              entonces se renombran, se piden los datos de módulos o profesores nuevos
+              (horas lectivas totales, siglas, nombre para la firma) y se generan los avisos.
+              "Borrar todos los informes procesados" borra los PDF de Raíces ya procesados.
 Avisos        Avisos pendientes de entregar y entregados, de todo el departamento, con filtros
               por profesor, tipo y texto. Se marcan los que se quieran y se pueden imprimir
               (todos en un solo PDF), descargar en ZIP, pasar a "Entregados" o borrar.
               Después de imprimir o descargar, pregunta qué hacer con ellos.
+              "Borrar avisos…" borra de una vez los pendientes, los entregados o todos.
 Registro      Todos los avisos emitidos. Un aviso nunca se repite, aunque se borre el documento.
+              "Vaciar registro" lo deja en blanco (p. ej. al empezar curso).
 Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
+              "Borrar todos los módulos y profesores" deja la hoja limpia.
 Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
               (AAAAMMDD o DDMMAAAA), conversor a PDF, puerto y acceso desde la red.
 
@@ -63,5 +68,7 @@ PEC_MODULOS.xlsx             módulos y profesores (se puede abrir con Excel, pe
 registro_avisos.csv          registro de avisos emitidos (no borrar filas)
 configuracion.ini            configuración (también editable desde la aplicación)
 plantillas\                  plantillas .docx de los dos documentos
+COPIAS_SEGURIDAD\            copias del registro y de la hoja antes de vaciarlos
+VERSION, CAMBIOS.md          versión instalada e historial de cambios
 
 Para hacer copia de seguridad basta con copiar la carpeta entera.

@@ -73,7 +73,6 @@ function mostrarVista(nombre) {
   $$(".pestana").forEach(p => p.classList.toggle("activa", p.dataset.vista === nombre));
   $$(".vista").forEach(v => v.classList.toggle("activa", v.id === `vista-${nombre}`));
   $("#barra-seleccion").classList.add("oculto");
-  $("#barra-procesar").classList.toggle("oculto", nombre !== "informes" || !estadoInformes.listos);
   cargadores[nombre]?.();
   if (nombre === "avisos") actualizarBarraSeleccion();
   guardarPreferencia("webpec-vista", nombre);
@@ -82,8 +81,6 @@ function mostrarVista(nombre) {
 $$(".pestana").forEach(p => p.addEventListener("click", () => mostrarVista(p.dataset.vista)));
 
 // ------------------------------------------------------------- informes ---
-
-const estadoInformes = { listos: 0 };
 
 function subirFicheros(ficheros) {
   const pdfs = [...ficheros].filter(f => /\.pdf$/i.test(f.name));
@@ -94,7 +91,7 @@ function subirFicheros(ficheros) {
     const json = await r.json();
     if (!r.ok) throw new Error(json.error);
   })).then(() => {
-    tostada(`${plural(pdfs.length, "informe subido", "informes subidos")}`, "ok");
+    tostada(`${plural(pdfs.length, "informe subido", "informes subidos")}. Pulsa «Procesar informes» cuando quieras.`, "ok");
   }).catch(error).finally(cargarInformes);
 }
 
@@ -109,108 +106,143 @@ zona.addEventListener("drop", ev => subirFicheros(ev.dataTransfer.files));
 window.addEventListener("dragover", ev => ev.preventDefault());
 window.addEventListener("drop", ev => ev.preventDefault());
 
+const estadoInformes = { pendientes: 0, procesados: 0, resultado: null };
+
 async function cargarInformes() {
   const lista = $("#lista-informes");
   if (!lista.children.length) lista.innerHTML = '<div class="cargando">Leyendo informes…</div>';
   try {
-    const estado = await api("/api/estado");
-    pintarInformes(estado);
+    pintarPendientes(await api("/api/estado"));
   } catch (e) { error(e); lista.innerHTML = ""; }
   cargarProcesados();
 }
 cargadores.informes = cargarInformes;
 $("#recargar-informes").addEventListener("click", cargarInformes);
 
-function pintarInformes(estado) {
+const enlaceVer = inf => `<a class="enlace" href="/informe?id=${encodeURIComponent(inf.id)}" target="_blank">Ver PDF</a>`;
+const botonQuitar = inf => `<button class="enlace peligro" data-borrar-informe="${esc(inf.id)}">Quitar</button>`;
+
+/** Lista de informes pendientes: solo informa, no cambia nada. */
+function pintarPendientes(estado) {
   const lista = $("#lista-informes");
-  const informes = estado.informes;
-  let avisos = 0, perdidas = 0, listos = 0;
-  const avisosHoja = estado.errores_hoja.map(e => `<div class="tarjeta informe"><span class="chip error">Hoja de módulos</span> ${esc(e)}</div>`).join("");
+  const avisosHoja = estado.errores_hoja.map(e =>
+    `<div class="tarjeta pendiente"><span><span class="chip error">Hoja de módulos</span> ${esc(e)}</span></div>`).join("");
+  estadoInformes.pendientes = estado.informes.filter(i => !i.error && !i.duplicado).length;
+  estadoInformes.procesados = estado.procesados;
 
-  if (!informes.length) {
-    lista.innerHTML = avisosHoja + '<div class="tarjeta vacio">No hay informes pendientes. Sube los PDF de faltas para empezar.</div>';
-  } else {
-    lista.innerHTML = avisosHoja + informes.map(inf => {
-      const verPdf = `<a class="enlace" href="/informe?id=${encodeURIComponent(inf.id)}" target="_blank">Ver PDF</a>`;
-      const borrar = `<button class="enlace peligro" data-borrar-informe="${esc(inf.id)}">Quitar</button>`;
-      if (inf.error) {
-        return `<div class="tarjeta informe">
-          <div class="informe-cabecera">
-            <div><h3>${esc(inf.archivo)}</h3><div class="meta">${esc(inf.error)}</div></div>
-            <div class="informe-acciones"><span class="chip error">No válido</span>${verPdf}${borrar}</div>
-          </div></div>`;
-      }
-      let chip, cuerpo = "";
-      if (inf.duplicado) {
-        chip = '<span class="chip gris">Ya procesado</span>';
-        cuerpo = `<p class="sin-avisos">${esc(inf.duplicado)}. Puedes quitarlo.</p>`;
-      } else if (inf.falta_firma || inf.falta_modulo) {
-        chip = '<span class="chip aviso">Faltan datos</span>';
-      } else {
-        chip = '<span class="chip ok">Listo</span>';
-        listos++;
-      }
-      if (inf.falta_firma) {
-        const f = inf.falta_firma;
-        cuerpo += `<form class="formulario-dato" data-profesor="${esc(f.profesor)}">
-          <p><b>Profesor/a nuevo.</b> Raíces escribe «${esc(f.profesor)}». ¿Cómo debe aparecer en la firma?</p>
-          <div class="fila">
-            <label class="ancho">Nombre para la firma, con tildes<input name="firma" value="${esc(f.propuesta)}" required></label>
-            <button class="boton principal">Guardar</button>
-          </div></form>`;
-      }
-      if (inf.falta_modulo) {
-        const m = inf.falta_modulo;
-        cuerpo += `<form class="formulario-dato" data-modulo='${esc(JSON.stringify(m))}'>
-          <p><b>Módulo nuevo.</b> Indica sus horas lectivas totales: con ellas se calculan el 7,5 % y el 15 %.</p>
-          <div class="fila">
-            <label>Horas totales<input name="horas" inputmode="decimal" required placeholder="p. ej. 100" size="8"></label>
-            <label>Siglas<input name="siglas" value="${esc(m.siglas)}" required size="8"></label>
-            <label class="ancho">Nombre del módulo en los avisos<input name="nombre" value="${esc(m.nombre)}" required></label>
-            <button class="boton principal">Registrar módulo</button>
-          </div></form>`;
-      }
-      if (inf.previsto) {
-        const conAviso = inf.previsto.filter(a => a.tipo);
-        avisos += conAviso.filter(a => a.tipo === "AVISO_PEC").length;
-        perdidas += conAviso.filter(a => a.tipo === "PEC").length;
-        cuerpo += inf.previsto.length ? `<table class="alumnos">${inf.previsto.map(a => `
-            <tr class="${a.tipo ? "" : "nada"}">
-              <td>${esc(a.alumno)}</td>
-              <td class="num">${a.fi} FI</td>
-              <td>${a.tipo ? chipTipo(a.tipo) : `<span class="secundario">${esc(a.estado)}</span>`}</td>
-            </tr>`).join("")}</table>`
-          : '<p class="sin-avisos">Ningún alumno llega al 7,5 %.</p>';
-      }
-      const d = inf.datos_modulo;
-      const umbrales = d ? `<div class="umbrales">${d.horas} h · 7,5 % = ${d.umbral_75} FI · 15 % = ${d.umbral_15} FI</div>` : "";
-      return `<div class="tarjeta informe">
-        <div class="informe-cabecera">
-          <div>
-            <h3>${esc(d ? d.nombre : inf.modulo)}</h3>
-            <div class="meta"><b>${esc(inf.unidad)}</b> · informe del ${esc(inf.fecha)} · ${esc(inf.firma || inf.profesor)} · ${inf.alumnos} alumnos</div>
-            ${umbrales}
-          </div>
-          <div class="informe-acciones">${chip}${verPdf}${borrar}</div>
-        </div>${cuerpo}</div>`;
-    }).join("");
-  }
+  lista.innerHTML = avisosHoja + (estado.informes.length ? estado.informes.map(inf => {
+    let chips = "", meta;
+    if (inf.error) {
+      chips = '<span class="chip error">No válido</span>';
+      meta = esc(inf.error);
+    } else {
+      meta = `<b>${esc(inf.unidad)}</b> · ${esc(inf.datos_modulo ? inf.datos_modulo.nombre : inf.modulo)} · ` +
+        `informe del ${esc(inf.fecha)} · ${esc(inf.firma || inf.profesor)}`;
+      if (inf.duplicado) chips += '<span class="chip gris">Ya procesado</span>';
+      if (inf.falta_modulo) chips += '<span class="chip aviso">Módulo nuevo</span>';
+      if (inf.falta_firma) chips += '<span class="chip aviso">Profesor/a nuevo</span>';
+      if (!chips) chips = '<span class="chip ok">Listo</span>';
+    }
+    const destino = inf.nombre_final && inf.nombre_final !== inf.archivo
+      ? `<div class="flecha">→ ${esc(inf.nombre_final)}</div>` : "";
+    return `<div class="tarjeta pendiente">
+      <div><h3>${esc(inf.archivo)}</h3><div class="meta">${meta}</div>${destino}</div>
+      <div class="etiquetas">${chips}${enlaceVer(inf)}${botonQuitar(inf)}</div></div>`;
+  }).join("") : '<div class="tarjeta vacio">No hay informes pendientes. Sube los PDF de faltas para empezar.</div>');
 
-  estadoInformes.listos = listos;
-  const barra = $("#barra-procesar");
-  barra.classList.toggle("oculto", !listos || !$("#vista-informes").classList.contains("activa"));
-  const partes = [];
-  if (avisos) partes.push(plural(avisos, "aviso del 7,5 %", "avisos del 7,5 %"));
-  if (perdidas) partes.push(plural(perdidas, "pérdida del 15 %", "pérdidas del 15 %"));
-  $("#resumen-previsto").innerHTML = `<b>${plural(listos, "informe listo", "informes listos")}</b>` +
-    (partes.length ? ` · se generarán ${partes.join(" y ")}` : " · no hay avisos que generar");
-  $("#boton-procesar").textContent = partes.length ? "Generar avisos" : "Archivar informes";
-  if (estado.conversor === "ninguno" && partes.length) {
-    $("#resumen-previsto").innerHTML += '<br><small>Sin LibreOffice ni Word: los avisos saldrán en .docx</small>';
-  }
+  $("#boton-procesar").disabled = !estadoInformes.pendientes;
+  $("#boton-procesar").textContent = estadoInformes.pendientes
+    ? `Procesar informes (${estadoInformes.pendientes})` : "Procesar informes";
+  $("#boton-borrar-procesados").disabled = !estado.procesados;
+  $("#boton-borrar-procesados").textContent = `Borrar todos los informes procesados (${estado.procesados})`;
 }
 
-$("#lista-informes").addEventListener("submit", async ev => {
+/** Botón «Procesar informes» y continuación tras completar los datos que falten. */
+async function procesar(continuar = false) {
+  const boton = $("#boton-procesar");
+  boton.disabled = true;
+  boton.textContent = "Procesando…";
+  try {
+    const r = await api("/api/procesar", {});
+    const previo = continuar && estadoInformes.resultado;
+    if (previo) {
+      r.informes = previo.informes.concat(r.informes);
+      r.avisos += previo.avisos;
+      r.perdidas += previo.perdidas;
+      r.mensajes = [...new Set(previo.mensajes.concat(r.mensajes))];
+    }
+    estadoInformes.resultado = r;
+    pintarResultado(r);
+    if (r.informes.length && !continuar) tostada("Informes procesados", "ok");
+  } catch (e) { error(e); }
+  cargarInformes();
+  contarPendientes();
+}
+$("#boton-procesar").addEventListener("click", () => procesar(false));
+
+function pintarResultado(r) {
+  const partes = [];
+
+  if (r.informes.length) {
+    const informes = r.informes.map(i => `
+      <h4>${esc(i.modulo)} <small>· ${esc(i.unidad)} · informe del ${esc(i.fecha)} · ${esc(i.profesor)}</small></h4>
+      ${i.situacion.length ? `<table class="alumnos">${i.situacion.map(a => `
+        <tr class="${a.tipo ? "" : "nada"}"><td>${esc(a.alumno)}</td><td class="num">${a.fi} FI</td>
+        <td>${a.tipo ? chipTipo(a.tipo) : `<span class="secundario">${esc(a.estado)}</span>`}</td></tr>`).join("")}</table>`
+        : '<p class="sin-avisos">Ningún alumno llega al 7,5 %.</p>'}`).join("");
+    const mensajes = r.mensajes.map(m => `<p class="nota">⚠ ${esc(m)}</p>`).join("");
+    partes.push(`<div class="tarjeta resultado">
+      <h3>${plural(r.informes.length, "informe procesado", "informes procesados")}:
+        ${plural(r.avisos, "aviso", "avisos")} y ${plural(r.perdidas, "pérdida", "pérdidas")}</h3>
+      ${mensajes}${informes}
+      ${r.avisos + r.perdidas ? '<p style="margin-top:16px"><button class="boton principal" data-ir-avisos>Ver los avisos para imprimir</button></p>' : ""}
+    </div>`);
+  }
+
+  if (r.faltan_datos.length) {
+    // Un formulario por profesor y por módulo, aunque aparezcan en varios informes
+    const profesores = new Map(), modulos = new Map();
+    for (const i of r.faltan_datos) {
+      if (i.falta_firma) profesores.set(i.falta_firma.profesor, i.falta_firma);
+      if (i.falta_modulo) modulos.set(`${i.falta_modulo.unidad}|${i.falta_modulo.en_informe}`, i.falta_modulo);
+    }
+    const formularios = [...profesores.values()].map(f => `
+      <form class="formulario-dato" data-profesor="${esc(f.profesor)}">
+        <p><b>Profesor/a nuevo.</b> Raíces escribe «${esc(f.profesor)}». ¿Cómo debe aparecer en la firma?</p>
+        <div class="fila">
+          <label class="ancho">Nombre para la firma, con tildes<input name="firma" value="${esc(f.propuesta)}" required></label>
+          <button class="boton principal">Guardar y continuar</button>
+        </div></form>`).concat([...modulos.values()].map(m => `
+      <form class="formulario-dato" data-modulo='${esc(JSON.stringify(m))}'>
+        <p><b>Módulo nuevo: ${esc(m.en_informe)}</b> (${esc(m.unidad)}). Indica sus horas lectivas totales:
+          con ellas se calculan el 7,5 % y el 15 %.</p>
+        <div class="fila">
+          <label>Horas totales<input name="horas" inputmode="decimal" required placeholder="p. ej. 100" size="8"></label>
+          <label>Siglas<input name="siglas" value="${esc(m.siglas)}" required size="8"></label>
+          <label class="ancho">Nombre del módulo en los avisos<input name="nombre" value="${esc(m.nombre)}" required></label>
+          <button class="boton principal">Guardar y continuar</button>
+        </div></form>`)).join("");
+    partes.push(`<div class="tarjeta faltan">
+      <h3>Faltan datos para ${plural(r.faltan_datos.length, "informe", "informes")}</h3>
+      <p class="nota">Al guardarlos, el procesado continúa solo.</p>${formularios}</div>`);
+  }
+
+  if (r.sin_procesar.length) {
+    partes.push(`<div class="tarjeta sin-procesar"><h3>No se han procesado</h3><ul>${r.sin_procesar.map(i =>
+      `<li><b>${esc(i.archivo)}</b>: ${esc(i.error || i.duplicado)}</li>`).join("")}</ul>
+      <p class="nota" style="margin-top:8px">Puedes quitarlos de la lista de pendientes.</p></div>`);
+  }
+
+  if (!partes.length) partes.push('<div class="tarjeta vacio">No había informes que procesar.</div>');
+  $("#resultado-proceso").innerHTML = partes.join("");
+  $("#resultado-proceso").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("#resultado-proceso").addEventListener("click", ev => {
+  if (ev.target.matches("[data-ir-avisos]")) mostrarVista("avisos");
+});
+
+$("#resultado-proceso").addEventListener("submit", async ev => {
   ev.preventDefault();
   const form = ev.target;
   const datos = Object.fromEntries(new FormData(form));
@@ -219,12 +251,13 @@ $("#lista-informes").addEventListener("submit", async ev => {
       await api("/api/profesor", { profesor: form.dataset.profesor, firma: datos.firma });
       tostada("Profesor/a registrado", "ok");
     } else {
-      const m = JSON.parse(form.dataset.modulo);
-      await api("/api/modulo", { ...m, ...datos });
+      await api("/api/modulo", { ...JSON.parse(form.dataset.modulo), ...datos });
       tostada("Módulo registrado", "ok");
     }
-    cargarInformes();
-  } catch (e) { error(e); }
+  } catch (e) { error(e); return; }
+  // Si aún quedan formularios por rellenar, se espera a ellos antes de continuar
+  form.remove();
+  if (!$("#resultado-proceso form")) procesar(true);
 });
 
 $("#lista-informes").addEventListener("click", async ev => {
@@ -236,26 +269,18 @@ $("#lista-informes").addEventListener("click", async ev => {
   try { await api("/api/informe/borrar", { id }); cargarInformes(); } catch (e) { error(e); }
 });
 
-$("#boton-procesar").addEventListener("click", async () => {
-  const boton = $("#boton-procesar");
-  boton.disabled = true;
-  boton.textContent = "Generando…";
+$("#boton-borrar-procesados").addEventListener("click", async () => {
+  const n = estadoInformes.procesados;
+  const ok = await dialogo("Borrar todos los informes procesados",
+    `<p>Se borrarán los <b>${plural(n, "informe", "informes")}</b> de faltas ya procesados (los PDF de Raíces).</p>
+     <p class="nota">Los avisos generados y el registro no se tocan.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: `Borrar ${n}`, clase: "peligro", valor: true }]);
+  if (!ok) return;
   try {
-    const r = await api("/api/procesar", {});
-    const items = r.informes.map(i =>
-      `<li><b>${esc(i.modulo)}</b> (${esc(i.unidad)}): ${i.documentos.length ? plural(i.documentos.length, "documento", "documentos") : "sin avisos"}</li>`).join("");
-    const mensajes = r.mensajes.map(m => `<p class="nota">⚠ ${esc(m)}</p>`).join("");
-    $("#resultado-proceso").innerHTML = `<div class="tarjeta resultado">
-      <h3>Hecho: ${plural(r.avisos, "aviso", "avisos")} y ${plural(r.perdidas, "pérdida", "pérdidas")}</h3>
-      <ul>${items}</ul>${mensajes}
-      ${r.avisos + r.perdidas ? '<p><button class="boton principal" id="ir-avisos">Ver los avisos para imprimir</button></p>' : ""}
-    </div>`;
-    $("#ir-avisos")?.addEventListener("click", () => mostrarVista("avisos"));
-    tostada("Informes procesados", "ok");
+    const r = await api("/api/procesados/borrar", {});
+    tostada(`${plural(r.borrados, "informe borrado", "informes borrados")}`, "ok");
+    cargarInformes();
   } catch (e) { error(e); }
-  boton.disabled = false;
-  cargarInformes();
-  contarPendientes();
 });
 
 async function cargarProcesados() {
@@ -263,7 +288,7 @@ async function cargarProcesados() {
     const lista = await api("/api/procesados");
     $("#lista-procesados").innerHTML = lista.length
       ? `<ul class="lista-simple">${lista.map(p => `<li><a href="/informe?id=${encodeURIComponent(p.id)}" target="_blank">${esc(p.archivo)}</a> <small>${esc(p.fecha)}</small></li>`).join("")}</ul>`
-      : '<p class="nota" style="margin-top:12px">Todavía no hay informes procesados.</p>';
+      : '<p class="nota" style="margin-top:12px">No hay informes procesados.</p>';
   } catch (e) { error(e); }
 }
 
@@ -541,7 +566,11 @@ $("#form-config").addEventListener("submit", async ev => {
 
 function pintarCabecera(config, version) {
   $("#subtitulo").textContent = `Avisos de pérdida de evaluación continua · ${config.centro}`;
-  if (version) $("#pie").title = `WebPEC ${version}`;
+  if (version) {
+    $("#pie").title = `WebPEC ${version}`;
+    $("#version").textContent = `v${version}`;
+    document.title = `WebPEC ${version}`;
+  }
 }
 
 // -------------------------------------------------------------- cerrar ---
@@ -559,6 +588,68 @@ $("#boton-cerrar").addEventListener("click", async () => {
 });
 
 const iconoCerrado = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="#0f766e" stroke-width="2" stroke-linecap="round"/></svg>';
+
+// ------------------------------------------------------ borrados masivos ---
+
+$("#boton-borrar-avisos").addEventListener("click", async () => {
+  let n;
+  try { n = await api("/api/documentos/contar"); } catch (e) { error(e); return; }
+  const total = n.pendientes + n.realizados;
+  if (!total) { tostada("No hay avisos que borrar"); return; }
+  const cuales = await dialogo("Borrar avisos generados",
+    `<p>¿Qué avisos quieres borrar?</p>
+     <p>Pendientes de entregar: <b>${n.pendientes}</b> · Entregados: <b>${n.realizados}</b></p>
+     <p class="nota">Se borran los documentos. El registro los conserva: no se volverán a generar.</p>`,
+    [{ texto: "Cancelar", valor: null },
+     { texto: `Pendientes (${n.pendientes})`, clase: "peligro-suave", valor: "pendientes" },
+     { texto: `Entregados (${n.realizados})`, clase: "peligro-suave", valor: "realizados" },
+     { texto: `Todos (${total})`, clase: "peligro", valor: "todos" }]);
+  if (!cuales) return;
+  const cuantos = { pendientes: n.pendientes, realizados: n.realizados, todos: total }[cuales];
+  if (!cuantos) { tostada("No hay avisos de ese tipo"); return; }
+  const ok = await dialogo("¿Seguro?",
+    `<p class="peligro-texto">Se borrarán ${plural(cuantos, "documento", "documentos")}. No se puede deshacer.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Borrar", clase: "peligro", valor: true }]);
+  if (!ok) return;
+  try {
+    const r = await api("/api/documentos/borrar_todos", { cuales });
+    tostada(`${plural(r.borrados, "aviso borrado", "avisos borrados")}`, "ok");
+    estadoAvisos.marcados.clear();
+    cargarAvisos();
+    contarPendientes();
+  } catch (e) { error(e); }
+});
+
+$("#boton-vaciar-registro").addEventListener("click", async () => {
+  const ok = await dialogo("Vaciar el registro de avisos",
+    `<p>Se borrarán las <b>${plural(filasRegistro.length, "anotación", "anotaciones")}</b> del registro.</p>
+     <p class="peligro-texto">Sin registro, WebPEC ya no sabe a quién se avisó: si se vuelven a procesar informes,
+       se generarán de nuevo los avisos del 7,5 % y no podrá emitir pérdidas del 15 % de avisos anteriores.</p>
+     <p class="nota">Útil al empezar un curso nuevo. Antes de vaciarlo se guarda una copia en COPIAS_SEGURIDAD.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Vaciar registro", clase: "peligro", valor: true }]);
+  if (!ok) return;
+  try {
+    const r = await api("/api/registro/vaciar", {});
+    tostada(`Registro vaciado (${plural(r.borrados, "anotación", "anotaciones")}).` +
+      (r.copia ? ` Copia: ${r.copia}` : ""), "ok");
+    cargarRegistro();
+  } catch (e) { error(e); }
+});
+
+$("#boton-vaciar-modulos").addEventListener("click", async () => {
+  const ok = await dialogo("Borrar todos los módulos y profesores",
+    `<p>La hoja de módulos quedará vacía: módulos, horas, siglas y nombres de firma.
+       Sirve para empezar de cero (por ejemplo, para otro departamento).</p>
+     <p class="nota">Los avisos y el registro no se tocan. Antes de borrar se guarda una copia en COPIAS_SEGURIDAD.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Borrar todo", clase: "peligro", valor: true }]);
+  if (!ok) return;
+  try {
+    const r = await api("/api/modulos/vaciar", {});
+    tostada(`Borrados ${plural(r.modulos, "módulo", "módulos")} y ${plural(r.profesores, "profesor/a", "profesores")}.` +
+      (r.copia ? ` Copia: ${r.copia}` : ""), "ok");
+    cargarModulos();
+  } catch (e) { error(e); }
+});
 
 // --------------------------------------------------------------- inicio ---
 

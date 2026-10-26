@@ -263,3 +263,26 @@ input:focus, select:focus { outline: none; border-color: var(--principal); box-s
 
 /* Los campos no heredan la negrita de su etiqueta */
 label input, label select { font-weight: 400; color: var(--texto); }
+
+/* ------------------------------------------------------------ v2.00 --- */
+.version { font-size: 12px; font-weight: 600; color: var(--suave); letter-spacing: 0;
+  background: rgba(255, 255, 255, .8); border: 1px solid var(--linea); border-radius: 999px; padding: 1px 8px;
+  vertical-align: middle; -webkit-text-fill-color: var(--suave); }
+.version:empty { display: none; }
+.botonera { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 20px 0 6px; }
+.centrada { text-align: center; margin-top: 6px; }
+.boton.peligro-suave { background: #fff; color: var(--perdida); border-color: #fecdd3; }
+.boton.peligro-suave:hover { background: var(--perdida-fondo); }
+.pendiente { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 20px; margin-bottom: 10px; }
+.pendiente h3 { margin: 0; font-size: 15px; }
+.pendiente .meta { color: var(--suave); font-size: 13.5px; }
+.pendiente .flecha { color: var(--principal); font-weight: 600; font-size: 13px; }
+.etiquetas { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.resultado h4 { margin: 18px 0 2px; font-size: 15px; }
+.resultado h4 small { font-weight: 400; color: var(--suave); }
+.faltan { border-left: 5px solid #f59e0b; }
+.faltan h3 { margin: 0 0 4px; }
+.sin-procesar { border-left: 5px solid var(--perdida); }
+.sin-procesar ul { margin: 6px 0 0; padding-left: 20px; }
+.peligro-texto { color: var(--perdida); font-weight: 600; }

@@ -32,7 +32,12 @@ except ImportError as e:
     sys.exit(f"No se pueden cargar las librerías de WebPEC ({e}).\n"
              f"Copia de nuevo la carpeta completa del programa, incluida lib/.")
 
-VERSION = "1.00"
+# Versión: X.YY. Cambios pequeños suben las centésimas; muchos cambios, la décima;
+# cambios grandes, la unidad. El historial está en CAMBIOS.md.
+try:
+    VERSION = (BASE / "VERSION").read_text(encoding="utf-8").strip()
+except OSError:
+    VERSION = "?"
 TAMANO_MAXIMO = 50 * 1024 * 1024
 
 # Las operaciones sobre ficheros, hoja y registro se hacen de una en una
@@ -102,6 +107,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._json(m.estado())
             if ruta == "/api/procesados":
                 return self._json(m.procesados())
+            if ruta == "/api/documentos/contar":
+                return self._json(m.contar_documentos())
             if ruta == "/api/documentos":
                 return self._json(m.documentos(q.get("carpeta", "pendientes")))
             if ruta == "/api/modulos":
@@ -171,6 +178,14 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "movidos": n})
             if ruta == "/api/config":
                 return self._json({"config": motor_pec.guardar_configuracion(m.base, datos)})
+            if ruta == "/api/procesados/borrar":
+                return self._json({"borrados": m.borrar_procesados()})
+            if ruta == "/api/documentos/borrar_todos":
+                return self._json({"borrados": m.borrar_todos_documentos(datos.get("cuales", ""))})
+            if ruta == "/api/registro/vaciar":
+                return self._json(m.vaciar_registro())
+            if ruta == "/api/modulos/vaciar":
+                return self._json(m.vaciar_hoja())
         self._json({"error": "No encontrado"}, 404)
 
     def _estatico(self, nombre):

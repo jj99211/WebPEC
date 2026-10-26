@@ -19,7 +19,7 @@
     <div class="marca">
       <img src="/web/icono.svg" alt="" class="logo">
       <div>
-        <h1>Web<span>PEC</span></h1>
+        <h1>Web<span>PEC</span> <small class="version" id="version"></small></h1>
         <p id="subtitulo">Avisos de pérdida de evaluación continua</p>
       </div>
     </div>
@@ -49,15 +49,17 @@
       </div>
 
       <div class="titulo-seccion">
-        <h2>Informes pendientes</h2>
+        <h2>Informes pendientes de procesar</h2>
         <button class="boton suave" id="recargar-informes">Actualizar</button>
       </div>
       <div id="lista-informes"></div>
 
-      <div class="barra-procesar oculto" id="barra-procesar">
-        <div id="resumen-previsto"></div>
-        <button class="boton principal grande" id="boton-procesar">Generar avisos</button>
+      <div class="botonera">
+        <button class="boton principal grande" id="boton-procesar">Procesar informes</button>
+        <button class="boton peligro-suave" id="boton-borrar-procesados">Borrar todos los informes procesados</button>
       </div>
+      <p class="nota centrada">«Procesar informes» renombra los informes, pide los datos de módulos o profesores
+        nuevos y genera los avisos de los alumnos.</p>
 
       <div id="resultado-proceso"></div>
 
@@ -82,6 +84,7 @@
             <option value="PEC">Pérdida 15 %</option>
           </select>
           <input type="search" id="filtro-texto" placeholder="Buscar alumno, grupo, módulo…">
+          <button class="boton peligro-suave" id="boton-borrar-avisos">Borrar avisos…</button>
         </div>
       </div>
 
@@ -114,7 +117,10 @@
     <section class="vista" id="vista-registro">
       <div class="titulo-seccion">
         <h2>Registro de avisos emitidos</h2>
-        <input type="search" id="filtro-registro" placeholder="Buscar…">
+        <div class="filtros">
+          <input type="search" id="filtro-registro" placeholder="Buscar…">
+          <button class="boton peligro-suave" id="boton-vaciar-registro">Vaciar registro</button>
+        </div>
       </div>
       <p class="nota">Cada aviso queda anotado aquí y no se vuelve a generar, aunque se borre el documento.</p>
       <div class="tarjeta sin-relleno">
@@ -130,7 +136,10 @@
 
     <!-- ======================================================== MÓDULOS -->
     <section class="vista" id="vista-modulos">
-      <div class="titulo-seccion"><h2>Módulos</h2></div>
+      <div class="titulo-seccion">
+        <h2>Módulos</h2>
+        <button class="boton peligro-suave" id="boton-vaciar-modulos">Borrar todos los módulos y profesores</button>
+      </div>
       <p class="nota">Los umbrales son el 7,5 % y el 15 % de las horas lectivas totales. Los módulos nuevos se
         registran solos al subir su primer informe. Las siglas de un módulo con avisos no se pueden cambiar.</p>
       <div class="tarjeta sin-relleno">
