@@ -8,6 +8,11 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 2.01 — 2026-10-26
+
+- El escudo del IES Rosa Chacel sustituye al logo anterior (cabecera, icono de la pestaña
+  y pantalla de cierre).
+
 ## 2.00 — 2026-10-26
 
 - El procesado ya no empieza solo: la pantalla de Informes muestra los informes pendientes

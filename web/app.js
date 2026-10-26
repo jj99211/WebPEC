@@ -580,14 +580,15 @@ $("#boton-cerrar").addEventListener("click", async () => {
     "<p>Se detendrá la aplicación. Para volver a usarla habrá que arrancarla de nuevo.</p>",
     [{ texto: "Cancelar", valor: false }, { texto: "Cerrar WebPEC", clase: "peligro", valor: true }]);
   if (!ok) return;
+  // El escudo se lee antes de apagar: después el servidor ya no puede servirlo
+  const escudoCerrado = await fetch("/web/escudo.png").then(r => r.blob())
+    .then(b => URL.createObjectURL(b)).catch(() => "");
   try { await api("/api/salir", {}); } catch (e) { /* el servidor ya se está cerrando */ }
   document.body.innerHTML = `<div class="fondo" aria-hidden="true"><div class="mancha m1"></div>
     <div class="mancha m2"></div><div class="marca-agua">WebPEC</div></div>
-    <div class="cerrado"><img src="data:image/svg+xml,${encodeURIComponent(iconoCerrado)}" alt="">
+    <div class="cerrado"><img src="${escudoCerrado}" alt="">
     <h1>WebPEC se ha cerrado</h1><p>Ya puedes cerrar esta pestaña.</p></div>`;
 });
-
-const iconoCerrado = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="#0f766e" stroke-width="2" stroke-linecap="round"/></svg>';
 
 // ------------------------------------------------------ borrados masivos ---
 
