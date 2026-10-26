@@ -46,6 +46,11 @@ function dialogo(titulo, html, botones) {
       boton.className = `boton ${b.clase || ""}`;
       boton.textContent = b.texto;
       boton.onclick = () => cerrar(b.valor);
+      if (b.requiere) {
+        const casilla = $("#modal-texto").querySelector(b.requiere);
+        boton.disabled = !casilla.checked;
+        casilla.onchange = () => { boton.disabled = !casilla.checked; };
+      }
       acciones.append(boton);
     }
     $("#modal").onclick = ev => { if (ev.target.id === "modal") cerrar(null); };
@@ -347,6 +352,7 @@ function pintarAvisos() {
       <td class="acciones-fila">
         ${d.pdf ? `<a class="enlace" href="${url}" target="_blank">Ver</a>` : ""}
         <a class="enlace" href="${url}&descargar=1">Descargar</a>
+        ${carpeta === "pendientes" ? `<button class="enlace" data-entregar="${esc(d.ruta)}">Entregado</button>` : ""}
       </td></tr>`;
   }).join("");
   const vacio = $("#avisos-vacio");
@@ -355,6 +361,7 @@ function pintarAvisos() {
     ? "Ningún aviso coincide con los filtros."
     : carpeta === "pendientes" ? "No hay avisos pendientes de entregar. 🎉" : "Todavía no hay avisos entregados.";
   $("#marcar-todos").checked = visibles.length > 0 && visibles.every(d => estadoAvisos.marcados.has(d.ruta));
+  $("#ayuda-avisos").classList.toggle("oculto", carpeta !== "pendientes" || !visibles.length);
   actualizarBarraSeleccion();
 }
 
@@ -372,6 +379,11 @@ $("#tabla-avisos").addEventListener("change", ev => {
     ev.target.checked ? estadoAvisos.marcados.add(r) : estadoAvisos.marcados.delete(r);
   }
   pintarAvisos();
+});
+
+$("#tabla-avisos").addEventListener("click", ev => {
+  const ruta = ev.target.dataset?.entregar;
+  if (ruta) entregar(estadoAvisos.lista.filter(d => d.ruta === ruta));
 });
 
 function actualizarBarraSeleccion() {
@@ -395,10 +407,29 @@ async function moverSeleccion(accion, docs) {
     await api("/api/documentos/mover", { carpeta: estadoAvisos.carpeta, rutas: docs.map(d => d.ruta), accion });
     const textos = { realizados: "movidos a entregados", pendientes: "devueltos a pendientes", borrar: "borrados" };
     tostada(`${plural(docs.length, "aviso", "avisos")} ${textos[accion]}`, "ok");
-    estadoAvisos.marcados.clear();
+    docs.forEach(d => estadoAvisos.marcados.delete(d.ruta));
     cargarAvisos();
     contarPendientes();
   } catch (e) { error(e); }
+}
+
+/** Pide al profesor que confirme la entrega personal de los avisos antes de pasarlos a Entregados. */
+async function entregar(docs) {
+  if (!docs.length) return;
+  const max = 8;
+  const lista = docs.slice(0, max).map(d =>
+    `<li>${esc(d.alumno || d.archivo)} <span class="secundario">· ${esc(d.grupo)} · ${esc(d.modulo)}</span></li>`).join("") +
+    (docs.length > max ? `<li class="secundario">y ${docs.length - max} más…</li>` : "");
+  const ok = await dialogo("Confirmar la entrega",
+    `<p>Pasar a <b>Entregados</b> no avisa al alumnado: <b>la entrega la tiene que hacer el profesor o la profesora
+     personalmente</b>, en mano (con el «Recibí» firmado) o por correo electrónico.</p>
+     <ul class="lista-modal">${lista}</ul>
+     <label class="casilla-confirmar"><input type="checkbox" id="confirmo-entrega">
+       Confirmo que ${docs.length === 1 ? "este aviso se ha entregado" : `estos ${docs.length} avisos se han entregado`}
+       al alumnado, en persona o por correo electrónico.</label>`,
+    [{ texto: "Cancelar", valor: false },
+     { texto: "Marcar como entregados", clase: "principal", valor: true, requiere: "#confirmo-entrega" }]);
+  if (ok) moverSeleccion("realizados", docs);
 }
 
 /** Después de imprimir o descargar, pregunta qué hacer con los avisos. */
@@ -411,7 +442,8 @@ async function preguntarDespues(docs, que) {
     [{ texto: "Dejarlos pendientes", valor: null },
      { texto: "Borrarlos", clase: "peligro", valor: "borrar" },
      { texto: "Pasar a Entregados", clase: "principal", valor: "realizados" }]);
-  if (valor) moverSeleccion(valor, docs);
+  if (valor === "realizados") entregar(docs);
+  else if (valor) moverSeleccion(valor, docs);
 }
 
 $("#accion-imprimir").addEventListener("click", async () => {
@@ -440,8 +472,10 @@ $("#accion-zip").addEventListener("click", () => {
   setTimeout(() => preguntarDespues(docs, "enviados"), 1200);
 });
 
-$("#accion-mover").addEventListener("click", () =>
-  moverSeleccion(estadoAvisos.carpeta === "pendientes" ? "realizados" : "pendientes", seleccion()));
+$("#accion-mover").addEventListener("click", () => {
+  if (estadoAvisos.carpeta === "pendientes") entregar(seleccion());
+  else moverSeleccion("pendientes", seleccion());
+});
 
 $("#accion-borrar").addEventListener("click", async () => {
   const docs = seleccion();

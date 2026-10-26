@@ -8,6 +8,14 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 2.04 — 2026-10-26
+
+- Avisos: confirmación de entrega. Antes de pasar avisos a **Entregados**, WebPEC recuerda que la entrega la hace
+  el profesor en persona o por correo electrónico y pide marcar «Confirmo que se han entregado» (el botón no se
+  activa hasta marcarla). Vale para la barra de selección, para la pregunta tras imprimir/descargar y para el
+  nuevo enlace «Entregado» de cada fila.
+- Texto de ayuda sobre la tabla de pendientes explicando las casillas de selección.
+
 ## 2.03 — 2026-10-26
 
 - Corregido: en el ZIP de instalación, `WebPEC.sh`, `Crear_acceso_directo.sh` y `webpec.py` no
