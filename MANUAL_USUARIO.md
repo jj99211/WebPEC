@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid)*
-*Manual de la versión 2.04*
+*Manual de la versión 3.00*
 
 ---
 
@@ -24,17 +24,22 @@ persona o por correo, y después la anota en la aplicación.
 
 Todo el departamento usa la misma instalación y ve los avisos de todos.
 
-## 2. Puesta en marcha
+## 2. Instalación y puesta en marcha
 
 **Requisitos:** Python 3.9 o posterior (en Windows, al instalarlo, marcar «Add Python to PATH»). Para que los
 avisos salgan en PDF hace falta LibreOffice o Microsoft Word; sin ninguno de los dos se generan en Word (.docx).
 
-**Arrancar:**
+**Instalar** (una sola vez):
 
-- **Windows:** doble clic en `WebPEC.bat`.
-- **Linux:** doble clic en `WebPEC.sh` (si el explorador pregunta, elegir «Ejecutar»).
-- **Icono en el escritorio** (solo la primera vez): doble clic en `Crear_acceso_directo.bat` (Windows) o
-  `Crear_acceso_directo.sh` (Linux). Después basta con el icono «WebPEC» con el escudo del instituto.
+1. Descomprimir el ZIP de WebPEC y dejar la carpeta `WebPEC` donde se quiera.
+2. Doble clic en el instalador: `Instalar_WebPEC.bat` (Windows) o `Instalar_WebPEC.sh` (Linux; si el
+   explorador pregunta, elegir «Ejecutar»).
+
+El instalador comprueba Python, crea el icono «WebPEC» con el escudo del instituto en el escritorio (en Linux,
+también en el menú de aplicaciones), prepara los datos y arranca la aplicación. Se puede repetir sin riesgo, por
+ejemplo para rehacer el icono si se mueve la carpeta.
+
+**Arrancar** (cada día): doble clic en el icono «WebPEC» del escritorio (o en `WebPEC.bat` / `WebPEC.sh`).
 
 Se abre una ventana de terminal y el navegador con la aplicación (`http://localhost:8765`). **La ventana de
 terminal tiene que seguir abierta** mientras se usa WebPEC; en Windows queda minimizada en la barra de tareas.
@@ -43,6 +48,10 @@ terminal tiene que seguir abierta** mientras se usa WebPEC; en Windows queda min
 
 **Cerrar:** botón de apagado (arriba a la derecha). Aparece la pantalla «WebPEC se ha cerrado» y ya se puede
 cerrar la pestaña.
+
+**Actualizar a una versión nueva:** cerrar WebPEC y descomprimir el ZIP nuevo encima de la carpeta, sustituyendo
+los ficheros. Los datos están en la carpeta `DATOS` y no se tocan. Si son de una versión anterior, al arrancar
+WebPEC guarda una copia de seguridad, los pone al día y muestra un aviso con lo que ha hecho.
 
 ## 3. Uso habitual paso a paso
 
@@ -75,25 +84,35 @@ cerrar la pestaña.
 
 ### Avisos
 
-- **Pendientes de entregar / Entregados:** cambia entre las dos bandejas.
+- **Pendientes de entregar / Entregados / Anulados:** cambia entre las tres bandejas.
 - **Filtros:** por profesor/a, por tipo (7,5 % o 15 %) y búsqueda por alumno, grupo o módulo.
 - **Casillas de selección:** al marcar uno o varios avisos aparece una barra inferior con:
   - **Imprimir:** une los avisos marcados en un solo PDF y abre la impresión.
   - **Descargar ZIP:** descarga los documentos marcados.
   - **Marcar como entregados** (en la bandeja de entregados, **Volver a pendientes**).
-  - **Borrar:** elimina los documentos marcados.
+  - **Anular…:** para avisos emitidos por error (ver más abajo).
 - **Entregado** (en cada fila): pasa ese aviso a la bandeja de entregados.
 - Al pasar avisos a Entregados, WebPEC pide marcar «Confirmo que se han entregado».
-- **Borrar avisos…:** borra de una vez los pendientes, los entregados o todos.
+- **Borrar avisos…:** borra de una vez los documentos pendientes, los entregados o todos. Está pensado para
+  limpiar al terminar el curso: el Registro los conserva y no se vuelven a generar.
 
-> **Importante:** borrar un aviso elimina el documento, pero el aviso **sigue anotado en el Registro** y WebPEC no
-> lo vuelve a generar. Usar «Borrar» solo para pruebas o duplicados.
+**Anular un aviso.** Si un aviso se emitió por error (horas del módulo mal puestas, faltas que después se
+justificaron…), se marca y se pulsa **Anular…**. WebPEC pide el **motivo** (obligatorio) y entonces:
+
+- el aviso queda **tachado en el Registro**, con la fecha y el motivo;
+- su documento pasa a la bandeja **Anulados** (se puede seguir viendo y descargando);
+- como ya no cuenta, si el alumno/a sigue por encima del límite, **el siguiente informe que se procese lo vuelve a
+  generar** con los datos correctos.
+
+Una pérdida del 15 % se apoya en su aviso del 7,5 %: para anular el aviso hay que anular antes la pérdida, o las
+dos a la vez.
 
 ### Registro
 
 Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI), umbral, profesor/a y
 fecha de generación. Tiene un buscador.
-Gracias al registro **un aviso nunca se repite**.
+Gracias al registro **un aviso nunca se repite**, salvo que se anule. Los avisos anulados aparecen tachados, con
+la fecha y el motivo. El enlace **Anular** de cada fila sirve también para avisos cuyo documento ya no existe.
 **Vaciar registro** lo deja en blanco (por ejemplo, al empezar un curso nuevo); antes guarda una copia de
 seguridad.
 
@@ -129,7 +148,7 @@ Cierra WebPEC de forma ordenada.
 
 ## 6. Dónde se guardan los datos
 
-Todo queda dentro de la carpeta `WebPEC`:
+Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo está el programa):
 
 | Carpeta o fichero | Contenido |
 |---|---|
@@ -138,12 +157,14 @@ Todo queda dentro de la carpeta `WebPEC`:
 | `INFORMES_FALTAS_PROCESADOS/` | Informes ya procesados |
 | `AVISOS_PENDIENTES/<profesor>/` | Avisos generados y sin entregar |
 | `AVISOS_REALIZADOS/<profesor>/` | Avisos entregados |
+| `AVISOS_ANULADOS/<profesor>/` | Avisos anulados |
 | `PEC_MODULOS.xlsx` | Módulos y profesorado (si se abre con Excel, cerrarlo antes de usar WebPEC) |
 | `registro_avisos.csv` | Registro de avisos emitidos (no borrar filas a mano) |
 | `configuracion.ini` | Configuración |
-| `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos |
+| `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos y antes de poner al día los datos de una versión anterior |
+| `VERSION_DATOS`, `migraciones.log` | Formato de los datos e historial de sus actualizaciones |
 
-**Copia de seguridad:** basta con copiar la carpeta `WebPEC` entera.
+**Copia de seguridad:** basta con copiar la carpeta `DATOS` entera.
 
 ## 7. Problemas frecuentes
 
@@ -154,10 +175,19 @@ Todo queda dentro de la carpeta `WebPEC`:
 | Los avisos salen en .docx en lugar de PDF | No hay LibreOffice ni Word, o el conversor elegido en Configuración no está instalado. |
 | Error al guardar módulos o profesores | `PEC_MODULOS.xlsx` está abierto en Excel: cerrarlo y repetir. |
 | Un alumno no recibe el aviso del 15 % | Necesita el aviso del 7,5 % en un informe anterior y haber acumulado más faltas desde entonces. |
-| El icono del escritorio ya no funciona | La carpeta se ha movido: volver a ejecutar `Crear_acceso_directo`. |
+| El icono del escritorio ya no funciona | La carpeta se ha movido: volver a ejecutar el instalador. |
+| Al arrancar dice que no puede actualizar los datos | Hay un fichero de datos abierto (Excel, LibreOffice): cerrarlo y volver a arrancar. |
+| Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. |
 
 ## 8. Contacto
 
 Dudas, errores o propuestas de mejora: **jose.jimenezcastillo@educa.madrid.org**
 
-(c) Departamento de Informática · IES Rosa Chacel · Madrid
+## 9. Licencia
+
+WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid).
+
+Se distribuye con la licencia **Creative Commons Reconocimiento-NoComercial-CompartirIgual 4.0 Internacional
+(CC BY-NC-SA 4.0)**: se puede usar, copiar y modificar libremente, citando al autor, sin fines comerciales y
+compartiendo las versiones modificadas con la misma licencia.
+Resumen: <https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es> · Detalles en `LICENCIA.txt`.

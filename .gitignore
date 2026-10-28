@@ -1,4 +1,8 @@
 # Datos de cada instalación: no forman parte del programa
+DATOS/
+__pycache__/
+
+# Datos sueltos de la 2.x (al arrancar la 3.x pasan solos a DATOS/)
 INFORMES_NUEVOS/
 INFORMES_FALTAS_PROCESAR/
 INFORMES_FALTAS_PROCESADOS/
@@ -8,4 +12,3 @@ COPIAS_SEGURIDAD/
 registro_avisos.csv
 PEC_MODULOS.xlsx
 configuracion.ini
-__pycache__/

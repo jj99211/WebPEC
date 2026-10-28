@@ -75,6 +75,7 @@
         <div class="interruptor" role="tablist">
           <button class="activo" data-carpeta="pendientes">Pendientes de entregar</button>
           <button data-carpeta="realizados">Entregados</button>
+          <button data-carpeta="anulados">Anulados</button>
         </div>
         <div class="filtros">
           <select id="filtro-profesor"><option value="">Todos los profesores</option></select>
@@ -111,7 +112,7 @@
           <button class="boton principal" id="accion-imprimir">Imprimir</button>
           <button class="boton" id="accion-zip">Descargar ZIP</button>
           <button class="boton" id="accion-mover"></button>
-          <button class="boton peligro" id="accion-borrar">Borrar</button>
+          <button class="boton peligro" id="accion-anular">Anular…</button>
         </div>
       </div>
     </section>
@@ -125,12 +126,13 @@
           <button class="boton peligro-suave" id="boton-vaciar-registro">Vaciar registro</button>
         </div>
       </div>
-      <p class="nota">Cada aviso queda anotado aquí y no se vuelve a generar, aunque se borre el documento.</p>
+      <p class="nota">Cada aviso queda anotado aquí y no se vuelve a generar. Si un aviso se emitió por error,
+        <b>anúlalo</b>: queda tachado en el registro y, si procede, el siguiente informe lo volverá a generar.</p>
       <div class="tarjeta sin-relleno">
         <table class="tabla" id="tabla-registro">
           <thead>
             <tr><th>Informe</th><th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th>
-                <th class="num">FI</th><th class="num">Umbral</th><th>Profesor/a</th><th>Generado</th></tr>
+                <th class="num">FI</th><th class="num">Umbral</th><th>Profesor/a</th><th>Generado</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -215,7 +217,10 @@
   <footer class="pie" id="pie">
     <p>Para consultar dudas, errores o mejoras, enviar un correo a:
       <a href="mailto:jose.jimenezcastillo@educa.madrid.org">jose.jimenezcastillo@educa.madrid.org</a></p>
-    <p>(c) Departamento de Informática - IES Rosa Chacel - Madrid</p>
+    <p>WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid) ·
+      <a class="licencia" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" rel="license noopener"
+         title="Libre uso, copia y modificación citando al autor, sin fines comerciales y compartiendo igual">
+        <span class="cc">CC BY-NC-SA 4.0</span></a></p>
   </footer>
 
   <div class="modal oculto" id="modal" role="dialog" aria-modal="true">

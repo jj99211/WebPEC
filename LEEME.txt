@@ -6,26 +6,31 @@ Aplicación web local para generar los avisos del 7,5 % y las confirmaciones de 
 15 % a partir de los "Listados de faltas totales" de Raíces.
 
 
-PUESTA EN MARCHA
-----------------
+INSTALACIÓN
+-----------
 1. El ordenador necesita Python 3.9 o posterior (https://www.python.org; al instalarlo,
    marcar "Add Python to PATH"). No hay que instalar nada más: las librerías van en lib\.
-2. Copiar la carpeta WebPEC completa (por ejemplo, al escritorio).
-3. Arrancar. El programa es el mismo en todos los sistemas (webpec.py); solo cambia el
-   lanzador de doble clic:
-     Windows:  doble clic en  WebPEC.bat
-     Linux:    doble clic en  WebPEC.sh  (si el explorador pregunta, elegir "Ejecutar"),
-               o en una terminal:  ./WebPEC.sh   o   python3 webpec.py
-   Se abre una ventana de terminal y, enseguida, el navegador con la aplicación
-   (http://localhost:8765). La terminal debe quedar abierta mientras se usa WebPEC.
-4. Para terminar: botón de apagado (arriba a la derecha) o cerrar la ventana de terminal.
+2. Descomprimir el ZIP y dejar la carpeta WebPEC donde se quiera (por ejemplo, en Documentos).
+3. Doble clic en el instalador:
+     Windows:  Instalar_WebPEC.bat
+     Linux:    Instalar_WebPEC.sh  (si el explorador pregunta, elegir "Ejecutar")
+   El instalador comprueba Python, crea el icono «WebPEC» con el escudo del instituto en el
+   escritorio (en Linux, también en el menú de aplicaciones), prepara los datos y arranca.
+   Se puede repetir sin riesgo: por ejemplo, si se mueve la carpeta, para rehacer el icono.
 
-ICONO EN EL ESCRITORIO: doble clic en  Crear_acceso_directo.bat  (Windows) o
-Crear_acceso_directo.sh  (Linux). Crea el icono «WebPEC» con el escudo del instituto (en Linux,
-también en el menú de aplicaciones). Si se mueve la carpeta, hay que volver a crearlo.
-En Windows, la ventana del servidor arranca minimizada en la barra de tareas.
+ACTUALIZAR A UNA VERSIÓN NUEVA: cerrar WebPEC y descomprimir el ZIP nuevo encima de la carpeta
+actual, sustituyendo los ficheros. Los datos están en DATOS\ y no se tocan. Si vienen de una
+versión anterior, WebPEC los pone al día solo al arrancar, después de guardar una copia de
+seguridad en DATOS\COPIAS_SEGURIDAD\ (también los datos de la 2.x, que estaban sueltos en la
+carpeta del programa).
 
-OJO: abrir web\index.html con doble clic NO funciona. Siempre hay que entrar con WebPEC.bat.
+ARRANCAR (después de instalar): doble clic en el icono «WebPEC» del escritorio, o en
+WebPEC.bat (Windows) / WebPEC.sh (Linux). Se abre una ventana de terminal y, enseguida, el
+navegador con la aplicación (http://localhost:8765). La terminal debe quedar abierta mientras
+se usa WebPEC; en Windows, con el icono, queda minimizada en la barra de tareas.
+Para terminar: botón de apagado (arriba a la derecha) o cerrar la ventana de terminal.
+
+OJO: abrir web\index.html con doble clic NO funciona. Hay que entrar con el icono o con WebPEC.bat / WebPEC.sh.
 
 Para pasar los avisos a PDF hace falta LibreOffice o Microsoft Word en el ordenador.
 Si no hay ninguno, se generan en .docx.
@@ -38,13 +43,16 @@ Informes      Arrastrar los PDF de faltas (con cualquier nombre). Se listan como
               entonces se renombran, se piden los datos de módulos o profesores nuevos
               (horas lectivas totales, siglas, nombre para la firma) y se generan los avisos.
               "Borrar todos los informes procesados" borra los PDF de Raíces ya procesados.
-Avisos        Avisos pendientes de entregar y entregados, de todo el departamento, con filtros
-              por profesor, tipo y texto. Se marcan los que se quieran y se pueden imprimir
-              (todos en un solo PDF), descargar en ZIP, pasar a "Entregados" o borrar.
-              Después de imprimir o descargar, pregunta qué hacer con ellos.
-              "Borrar avisos…" borra de una vez los pendientes, los entregados o todos.
-Registro      Todos los avisos emitidos. Un aviso nunca se repite, aunque se borre el documento.
-              "Vaciar registro" lo deja en blanco (p. ej. al empezar curso).
+Avisos        Avisos pendientes de entregar, entregados y anulados, de todo el departamento,
+              con filtros por profesor, tipo y texto. Se marcan los que se quieran y se pueden
+              imprimir (todos en un solo PDF), descargar en ZIP, pasar a "Entregados" o anular.
+              Después de imprimir o descargar, pregunta si ya están entregados.
+              ANULAR (con motivo): para avisos emitidos por error. Quedan tachados en el registro
+              y su documento pasa a "Anulados"; el siguiente informe puede volver a generarlos.
+              "Borrar avisos…" borra de una vez los documentos pendientes, entregados o todos
+              (para limpiar al terminar el curso; el registro los conserva).
+Registro      Todos los avisos emitidos. Un aviso nunca se repite, salvo que se anule. También se
+              puede anular desde aquí. "Vaciar registro" lo deja en blanco (p. ej. al empezar curso).
 Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
               "Borrar todos los módulos y profesores" deja la hoja limpia.
 Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
@@ -59,19 +67,31 @@ REGLAS
   Si no ha acumulado más faltas desde el aviso, espera al siguiente informe.
 
 
-DATOS (todo dentro de esta carpeta)
------------------------------------
+DATOS (todo dentro de la carpeta DATOS\)
+----------------------------------------
 INFORMES_NUEVOS\             PDF subidos que aún no tienen todos los datos
 INFORMES_FALTAS_PROCESAR\    informes listos, renombrados a FECHA_GRUPO_MODULO_Faltas.pdf
 INFORMES_FALTAS_PROCESADOS\  informes ya procesados
 AVISOS_PENDIENTES\<prof>\    avisos generados, sin entregar
 AVISOS_REALIZADOS\<prof>\    avisos entregados
+AVISOS_ANULADOS\<prof>\      avisos anulados
 PEC_MODULOS.xlsx             módulos y profesores (se puede abrir con Excel, pero hay que
                              cerrarlo antes de registrar o cambiar módulos en WebPEC)
 registro_avisos.csv          registro de avisos emitidos (no borrar filas)
 configuracion.ini            configuración (también editable desde la aplicación)
-plantillas\                  plantillas .docx de los dos documentos
-COPIAS_SEGURIDAD\            copias del registro y de la hoja antes de vaciarlos
-VERSION, CAMBIOS.md          versión instalada e historial de cambios
+COPIAS_SEGURIDAD\            copias antes de vaciar el registro o la hoja y antes de
+                             poner al día los datos de una versión anterior
+VERSION_DATOS, migraciones.log  formato de los datos e historial de sus actualizaciones
 
-Para hacer copia de seguridad basta con copiar la carpeta entera.
+Fuera de DATOS\ solo está el programa: plantillas\ (plantillas .docx de los dos documentos),
+web\, lib\, VERSION y CAMBIOS.md (versión instalada e historial), MANUAL_USUARIO.md.
+
+Para hacer copia de seguridad basta con copiar la carpeta DATOS entera.
+
+
+LICENCIA
+--------
+WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid).
+Licencia Creative Commons BY-NC-SA 4.0: se puede usar, copiar y modificar libremente citando al
+autor, sin fines comerciales y compartiendo las versiones modificadas con la misma licencia.
+Detalles en LICENCIA.txt.

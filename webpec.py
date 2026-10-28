@@ -8,7 +8,10 @@ Mientras se usa, la ventana del programa debe quedar abierta; al cerrarla se det
 Uso:
   webpec.py                       arranca y abre el navegador
   webpec.py --sin-navegador       arranca sin abrir el navegador
-  webpec.py --crear-acceso-directo  crea el icono de WebPEC en el escritorio
+  webpec.py --instalar            prepara los datos, crea el icono del escritorio y arranca
+  webpec.py --crear-acceso-directo  solo crea el icono de WebPEC en el escritorio
+
+Licencia: Creative Commons BY-NC-SA 4.0 (ver LICENCIA.txt).
 """
 
 import argparse
@@ -29,6 +32,10 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
+
+if sys.version_info < (3, 9):
+    sys.exit("WebPEC necesita Python 3.9 o posterior. Instálalo desde https://www.python.org "
+             "(en Windows, marcando «Add Python to PATH»).")
 
 try:
     import motor_pec
@@ -121,9 +128,11 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == "/api/registro":
                 return self._json(m.registro())
             if ruta == "/api/config":
+                # Lo hecho al migrar los datos se muestra una vez, al abrir la página
+                migracion, m.migracion = m.migracion, []
                 return self._json({"config": m.config(), "version": VERSION,
                                    "conversor_detectado": motor_pec.nombre_conversor("auto"),
-                                   "carpeta": str(m.base)})
+                                   "carpeta": str(m.base), "migracion": migracion})
             if ruta == "/informe":
                 fichero = m.ruta_informe(q.get("id", ""))
                 return self._fichero(fichero.read_bytes(), fichero.name, "application/pdf",
@@ -177,6 +186,8 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == "/api/modulo/borrar":
                 m.borrar_modulo(datos.get("fila"))
                 return self._json({"ok": True})
+            if ruta == "/api/anular":
+                return self._json(m.anular(datos.get("documentos", []), datos.get("motivo", "")))
             if ruta == "/api/documentos/mover":
                 n = m.mover_documentos(datos.get("carpeta", ""), datos.get("rutas", []),
                                        datos.get("accion", ""))
@@ -310,13 +321,39 @@ def acceso_linux():
     return mensaje
 
 
+def configuracion_previa(datos):
+    """Configuración para saber el puerto antes de abrir (y migrar) los datos."""
+    for carpeta in (datos, BASE):
+        if (carpeta / motor_pec.CONFIGURACION).exists():
+            return motor_pec.leer_configuracion(carpeta)
+    return motor_pec.leer_configuracion(datos)
+
+
+def instalar():
+    """Primera parte de --instalar: comprobaciones e icono. Los datos se preparan al arrancar."""
+    print("=" * 62)
+    print(f"  Instalación de WebPEC {VERSION}")
+    print("=" * 62)
+    print(f"  Python {sys.version.split()[0]}: correcto")
+    print(f"  Carpeta del programa: {BASE}")
+    try:
+        print("  " + crear_acceso_directo().replace("\n", "\n  "))
+    except (RuntimeError, OSError) as e:
+        print(f"  AVISO: no se ha podido crear el icono del escritorio ({e}).")
+        print("  WebPEC funciona igual: se puede arrancar con WebPEC.bat o WebPEC.sh.")
+    print("  Si mueves la carpeta de WebPEC, vuelve a ejecutar el instalador.")
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sin-navegador", action="store_true",
                         help="no abrir el navegador al arrancar")
-    parser.add_argument("--carpeta", type=Path, default=BASE,
-                        help="carpeta de datos (por defecto, la del programa)")
+    parser.add_argument("--carpeta", type=Path, default=BASE / motor_pec.DATOS,
+                        help="carpeta de datos (por defecto, DATOS/ junto al programa)")
+    parser.add_argument("--instalar", action="store_true",
+                        help="crear el icono del escritorio, preparar los datos y arrancar")
     parser.add_argument("--crear-acceso-directo", action="store_true",
                         help="crear el icono de WebPEC en el escritorio y terminar")
     args = parser.parse_args()
@@ -329,18 +366,30 @@ def main():
             sys.exit(f"No se ha podido crear el acceso directo: {e}")
         return
 
-    mimetypes.add_type("application/javascript", ".js")
-    mimetypes.add_type("image/svg+xml", ".svg")
-    Manejador.motor = Motor(args.carpeta)
-    config = Manejador.motor.config()
-    puerto = int(config["puerto"])
-    direccion_url = f"http://localhost:{puerto}"
+    if args.instalar:
+        instalar()
 
+    # Antes de tocar los datos: si ya hay un WebPEC en marcha, se usa ese
+    puerto = int(configuracion_previa(args.carpeta)["puerto"])
+    direccion_url = f"http://localhost:{puerto}"
     if ya_en_marcha(puerto):
         print(f"WebPEC ya está en marcha: se abre {direccion_url}")
         if not args.sin_navegador:
             webbrowser.open(direccion_url)
         return
+
+    mimetypes.add_type("application/javascript", ".js")
+    mimetypes.add_type("image/svg+xml", ".svg")
+    try:
+        Manejador.motor = Motor(args.carpeta)
+    except ErrorPEC as e:
+        sys.exit(f"No se puede arrancar WebPEC: {e}")
+    for hecho in Manejador.motor.migracion:
+        print(f"  Datos: {hecho}")
+    config = Manejador.motor.config()
+    if int(config["puerto"]) != puerto:  # la configuración estaba aún sin migrar
+        puerto = int(config["puerto"])
+        direccion_url = f"http://localhost:{puerto}"
 
     escucha = "0.0.0.0" if config["acceso_red"].lower() in ("si", "sí", "yes", "1") else "127.0.0.1"
     try:
@@ -350,6 +399,7 @@ def main():
 
     print("=" * 62)
     print(f"  WebPEC {VERSION} en marcha:  {direccion_url}")
+    print("  Licencia CC BY-NC-SA 4.0 · Departamento de Informática del IES Rosa Chacel (Madrid)")
     if escucha == "0.0.0.0":
         print(f"  También desde la red:  http://{socket.gethostname()}:{puerto}")
     print("  NO CIERRES ESTA VENTANA mientras uses la aplicación.")

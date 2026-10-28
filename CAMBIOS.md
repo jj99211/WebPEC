@@ -8,6 +8,28 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.00 — 2026-10-28
+
+- **Datos separados del programa**, en la carpeta `DATOS/`. Actualizar WebPEC es descomprimir la versión nueva
+  encima: los datos no se tocan.
+- **Migración automática de datos.** Al arrancar, si los datos son de una versión anterior (también los de la 2.x,
+  sueltos en la carpeta del programa), WebPEC guarda antes un ZIP con todos ellos en
+  `DATOS/COPIAS_SEGURIDAD/`, los pone al día y muestra un aviso con lo que ha hecho (queda anotado en
+  `DATOS/migraciones.log`). Si algo falla a medias (p. ej. un fichero abierto en Excel), basta con cerrarlo y volver a
+  arrancar.
+- **Anular avisos**, en lugar de borrarlos. Desde Avisos (botón «Anular…») o desde el Registro (enlace «Anular»),
+  con motivo obligatorio: el aviso queda tachado en el registro con fecha y motivo, su documento pasa a la nueva
+  bandeja **Anulados** y el siguiente informe puede volver a generarlo. Una pérdida del 15 % hay que anularla antes
+  que su aviso del 7,5 % (o las dos a la vez). Sirve también para los avisos cuyo documento se borró en la 2.x.
+- Desaparece el «Borrar» de avisos sueltos (y de la pregunta tras imprimir). «Borrar avisos…» se mantiene para
+  limpiar documentos al terminar el curso.
+- **Instalador**: `Instalar_WebPEC.bat` (Windows) e `Instalar_WebPEC.sh` (Linux) comprueban Python, crean el icono
+  del escritorio (y del menú en Linux), preparan los datos y arrancan. Sustituyen a `Crear_acceso_directo.*`.
+- **Licencia Creative Commons BY-NC-SA 4.0** (Departamento de Informática del IES Rosa Chacel): en el pie de la
+  pantalla principal, en la pantalla de cierre y en `LICENCIA.txt`.
+- Manual de usuario (`MANUAL_USUARIO.md`) y `LEEME.txt` al día.
+- Linux: si falta Python 3 o WebPEC no puede arrancar, la terminal espera para que se pueda leer el mensaje.
+
 ## 2.04 — 2026-10-26
 
 - Avisos: confirmación de entrega. Antes de pasar avisos a **Entregados**, WebPEC recuerda que la entrega la hace

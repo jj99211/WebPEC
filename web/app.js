@@ -47,9 +47,11 @@ function dialogo(titulo, html, botones) {
       boton.textContent = b.texto;
       boton.onclick = () => cerrar(b.valor);
       if (b.requiere) {
-        const casilla = $("#modal-texto").querySelector(b.requiere);
-        boton.disabled = !casilla.checked;
-        casilla.onchange = () => { boton.disabled = !casilla.checked; };
+        // Casilla que hay que marcar o campo de texto que hay que rellenar
+        const campo = $("#modal-texto").querySelector(b.requiere);
+        const listo = () => campo.type === "checkbox" ? campo.checked : campo.value.trim() !== "";
+        boton.disabled = !listo();
+        campo.oninput = campo.onchange = () => { boton.disabled = !listo(); };
       }
       acciones.append(boton);
     }
@@ -63,6 +65,12 @@ function chipTipo(tipo) {
   return tipo === "PEC"
     ? '<span class="chip perdida">Pérdida 15 %</span>'
     : '<span class="chip aviso">Aviso 7,5 %</span>';
+}
+
+/** "2026-10-28 20:03" -> "28/10/2026 20:03" */
+function fechaHora(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(.*)$/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}${m[4]}` : (iso || "");
 }
 
 function plural(n, uno, varios) { return `${n} ${n === 1 ? uno : varios}`; }
@@ -343,7 +351,8 @@ function pintarAvisos() {
     return `<tr class="${estadoAvisos.marcados.has(d.ruta) ? "marcada" : ""}">
       <td class="col-check"><input type="checkbox" data-ruta="${esc(d.ruta)}" ${estadoAvisos.marcados.has(d.ruta) ? "checked" : ""}></td>
       <td>${chipTipo(d.tipo)}</td>
-      <td>${esc(d.alumno || d.archivo)}${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}</td>
+      <td>${esc(d.alumno || d.archivo)}${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}
+        ${carpeta === "anulados" ? `<span class="motivo">Anulado el ${esc(fechaHora(d.fecha_anulacion))}: ${esc(d.motivo_anulacion)}</span>` : ""}</td>
       <td>${esc(d.grupo)}</td>
       <td class="secundario">${esc(d.modulo)}</td>
       <td class="num">${esc(d.fi)}</td>
@@ -359,7 +368,8 @@ function pintarAvisos() {
   vacio.classList.toggle("oculto", visibles.length > 0);
   vacio.textContent = estadoAvisos.lista.length
     ? "Ningún aviso coincide con los filtros."
-    : carpeta === "pendientes" ? "No hay avisos pendientes de entregar. 🎉" : "Todavía no hay avisos entregados.";
+    : { pendientes: "No hay avisos pendientes de entregar. 🎉", realizados: "Todavía no hay avisos entregados.",
+        anulados: "No hay avisos anulados." }[carpeta];
   $("#marcar-todos").checked = visibles.length > 0 && visibles.every(d => estadoAvisos.marcados.has(d.ruta));
   $("#ayuda-avisos").classList.toggle("oculto", carpeta !== "pendientes" || !visibles.length);
   actualizarBarraSeleccion();
@@ -392,10 +402,13 @@ function actualizarBarraSeleccion() {
   barra.classList.toggle("oculto", !n || !$("#vista-avisos").classList.contains("activa"));
   $("#texto-seleccion").innerHTML = `<b>${plural(n, "aviso seleccionado", "avisos seleccionados")}</b>`;
   $("#accion-mover").textContent = estadoAvisos.carpeta === "pendientes" ? "Marcar como entregados" : "Volver a pendientes";
+  const anulados = estadoAvisos.carpeta === "anulados";
+  $("#accion-mover").classList.toggle("oculto", anulados);
+  $("#accion-anular").classList.toggle("oculto", anulados);
 }
 
 function seleccion() {
-  return estadoAvisos.lista.filter(d => estadoAvisos.marcados.has(d.ruta));
+  return estadoAvisos.lista.filter(d => estadoAvisos.marcados.has(d.ruta)).map(d => ({ ...d, documento: d.archivo }));
 }
 
 function urlVarios(ruta, docs) {
@@ -405,7 +418,7 @@ function urlVarios(ruta, docs) {
 async function moverSeleccion(accion, docs) {
   try {
     await api("/api/documentos/mover", { carpeta: estadoAvisos.carpeta, rutas: docs.map(d => d.ruta), accion });
-    const textos = { realizados: "movidos a entregados", pendientes: "devueltos a pendientes", borrar: "borrados" };
+    const textos = { realizados: "movidos a entregados", pendientes: "devueltos a pendientes" };
     tostada(`${plural(docs.length, "aviso", "avisos")} ${textos[accion]}`, "ok");
     docs.forEach(d => estadoAvisos.marcados.delete(d.ruta));
     cargarAvisos();
@@ -436,14 +449,11 @@ async function entregar(docs) {
 async function preguntarDespues(docs, que) {
   if (estadoAvisos.carpeta !== "pendientes") return;
   const valor = await dialogo(`¿Ya están ${que}?`,
-    `<p>Cuando los ${plural(docs.length, "aviso esté entregado", "avisos estén entregados")}, puedes pasarlos a
-     <b>Entregados</b> (recomendado: quedan guardados por si hay que reimprimirlos) o borrarlos.</p>
-     <p class="nota">Sea como sea, el registro los conserva y no se volverán a generar.</p>`,
+    `<p>Cuando los ${plural(docs.length, "aviso esté entregado", "avisos estén entregados")}, pásalos a
+     <b>Entregados</b>: quedan guardados por si hay que reimprimirlos.</p>`,
     [{ texto: "Dejarlos pendientes", valor: null },
-     { texto: "Borrarlos", clase: "peligro", valor: "borrar" },
      { texto: "Pasar a Entregados", clase: "principal", valor: "realizados" }]);
   if (valor === "realizados") entregar(docs);
-  else if (valor) moverSeleccion(valor, docs);
 }
 
 $("#accion-imprimir").addEventListener("click", async () => {
@@ -477,14 +487,37 @@ $("#accion-mover").addEventListener("click", () => {
   else moverSeleccion("pendientes", seleccion());
 });
 
-$("#accion-borrar").addEventListener("click", async () => {
-  const docs = seleccion();
-  const ok = await dialogo("Borrar avisos",
-    `<p>Se borrarán ${plural(docs.length, "documento", "documentos")}. No se puede deshacer.</p>
-     <p class="nota">El registro los conserva: no se volverán a generar.</p>`,
-    [{ texto: "Cancelar", valor: false }, { texto: "Borrar", clase: "peligro", valor: true }]);
-  if (ok) moverSeleccion("borrar", docs);
-});
+$("#accion-anular").addEventListener("click", async () => { if (await anular(seleccion())) cargarAvisos(); });
+
+/**
+ * Anula avisos (cada uno con su alumno, grupo y módulo). Pide el motivo; al terminar recarga lo que haga falta.
+ * docs: [{documento, alumno, grupo, modulo}]
+ */
+async function anular(docs) {
+  if (!docs.length) return false;
+  const max = 8;
+  const lista = docs.slice(0, max).map(d =>
+    `<li>${esc(d.alumno || d.documento)} <span class="secundario">· ${esc(d.grupo)} · ${esc(d.modulo)}</span></li>`).join("") +
+    (docs.length > max ? `<li class="secundario">y ${docs.length - max} más…</li>` : "");
+  const ok = await dialogo(docs.length === 1 ? "Anular aviso" : `Anular ${docs.length} avisos`,
+    `<p>Úsalo cuando un aviso se emitió por error (horas del módulo mal puestas, faltas que luego se justificaron…).</p>
+     <ul class="lista-modal">${lista}</ul>
+     <p class="nota">El aviso queda tachado en el registro con la fecha y el motivo, y su documento pasa a <b>Anulados</b>.
+       Si el alumno/a sigue superando el límite, el siguiente informe que se procese lo volverá a generar.
+       Una pérdida del 15 % hay que anularla antes que su aviso del 7,5 % (o los dos a la vez).</p>
+     <label class="campo-motivo">Motivo de la anulación<textarea id="motivo-anulacion" maxlength="300"
+       placeholder="p. ej. Las horas del módulo estaban mal"></textarea></label>`,
+    [{ texto: "Cancelar", valor: false },
+     { texto: "Anular", clase: "peligro", valor: true, requiere: "#motivo-anulacion" }]);
+  if (!ok) return false;
+  try {
+    const r = await api("/api/anular", { documentos: docs.map(d => d.documento), motivo: $("#motivo-anulacion").value });
+    tostada(`${plural(r.anulados, "aviso anulado", "avisos anulados")}`, "ok");
+    estadoAvisos.marcados.clear();
+    contarPendientes();
+    return true;
+  } catch (e) { error(e); return false; }
+}
 
 function pintarContador(n) { $("#contador-avisos").textContent = n || ""; }
 
@@ -505,15 +538,30 @@ cargadores.registro = cargarRegistro;
 function pintarRegistro() {
   const texto = $("#filtro-registro").value.trim().toLowerCase();
   const filas = filasRegistro.filter(f => !texto ||
-    [f.alumno, f.grupo, f.nombre_modulo, f.modulo, f.profesor, f.fecha].join(" ").toLowerCase().includes(texto));
-  $("#tabla-registro tbody").innerHTML = filas.length ? filas.map(f => `<tr>
-      <td>${esc(f.fecha)}</td><td>${chipTipo(f.tipo)}</td><td>${esc(f.alumno)}</td><td>${esc(f.grupo)}</td>
+    [f.alumno, f.grupo, f.nombre_modulo, f.modulo, f.profesor, f.fecha, f.estado, f.motivo_anulacion].join(" ").toLowerCase().includes(texto));
+  $("#tabla-registro tbody").innerHTML = filas.length ? filas.map(f => {
+    const anulada = f.estado === "anulado";
+    return `<tr class="${anulada ? "anulada" : ""}">
+      <td>${esc(f.fecha)}</td>
+      <td>${anulada ? `<span class="chip anulado" title="${esc(f.motivo_anulacion)}">${f.tipo === "PEC" ? "Pérdida 15 %" : "Aviso 7,5 %"}</span>` : chipTipo(f.tipo)}</td>
+      <td>${anulada ? `<span class="tachado">${esc(f.alumno)}</span>
+        <span class="motivo">Anulado el ${esc(fechaHora(f.fecha_anulacion))}: ${esc(f.motivo_anulacion)}</span>` : esc(f.alumno)}</td>
+      <td>${esc(f.grupo)}</td>
       <td class="secundario">${esc(f.nombre_modulo)}</td><td class="num">${esc(f.faltas_injustificadas)}</td>
       <td class="num">${esc(f.umbral)}</td><td class="secundario">${esc(f.profesor)}</td>
-      <td class="secundario">${esc(f.fecha_proceso)}</td></tr>`).join("")
-    : '<tr><td colspan="9" class="vacio">No hay avisos registrados.</td></tr>';
+      <td class="secundario">${esc(f.fecha_proceso)}</td>
+      <td class="acciones-fila">${anulada ? "" : `<button class="enlace peligro" data-anular="${esc(f.documento)}">Anular</button>`}</td></tr>`;
+  }).join("")
+    : '<tr><td colspan="10" class="vacio">No hay avisos registrados.</td></tr>';
 }
 $("#filtro-registro").addEventListener("input", pintarRegistro);
+
+$("#tabla-registro").addEventListener("click", async ev => {
+  const documento = ev.target.dataset?.anular;
+  if (!documento) return;
+  const f = filasRegistro.find(x => x.documento === documento && x.estado !== "anulado");
+  if (await anular([{ documento, alumno: f.alumno, grupo: f.grupo, modulo: f.nombre_modulo }])) cargarRegistro();
+});
 
 // -------------------------------------------------------------- módulos ---
 
@@ -585,6 +633,12 @@ async function cargarConfig() {
     $("#conversor-detectado").textContent = `En este ordenador, la conversión automática usa: ${nombres[r.conversor_detectado]}`;
     $("#carpeta-datos").textContent = `Carpeta de datos: ${r.carpeta}`;
     pintarCabecera(r.config, r.version);
+    if (r.migracion?.length) {
+      dialogo(`Datos actualizados a WebPEC ${r.version}`,
+        `<p>Al arrancar, WebPEC ha puesto al día los datos de la versión anterior. No se ha perdido nada.</p>
+         <ul class="lista-modal">${r.migracion.map(h => `<li>${esc(h)}</li>`).join("")}</ul>`,
+        [{ texto: "Entendido", clase: "principal", valor: true }]);
+    }
   } catch (e) { error(e); }
 }
 cargadores.config = cargarConfig;
@@ -621,7 +675,11 @@ $("#boton-cerrar").addEventListener("click", async () => {
   document.body.innerHTML = `<div class="fondo" aria-hidden="true"><div class="mancha m1"></div>
     <div class="mancha m2"></div><div class="marca-agua">WebPEC</div></div>
     <div class="cerrado"><img src="${escudoCerrado}" alt="">
-    <h1>WebPEC se ha cerrado</h1><p>Ya puedes cerrar esta pestaña.</p></div>`;
+    <h1>WebPEC se ha cerrado</h1><p>Ya puedes cerrar esta pestaña.</p>
+    <p class="licencia-cierre">WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid)<br>
+      Se puede usar, copiar y modificar libremente citando al autor, sin fines comerciales y compartiendo con la misma licencia:<br>
+      <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" rel="license noopener">
+        <span class="cc">CC BY-NC-SA 4.0</span> Reconocimiento-NoComercial-CompartirIgual 4.0 Internacional</a></p></div>`;
 });
 
 // ------------------------------------------------------ borrados masivos ---
@@ -634,7 +692,8 @@ $("#boton-borrar-avisos").addEventListener("click", async () => {
   const cuales = await dialogo("Borrar avisos generados",
     `<p>¿Qué avisos quieres borrar?</p>
      <p>Pendientes de entregar: <b>${n.pendientes}</b> · Entregados: <b>${n.realizados}</b></p>
-     <p class="nota">Se borran los documentos. El registro los conserva: no se volverán a generar.</p>`,
+     <p class="nota">Pensado para limpiar al terminar el curso: se borran los documentos, pero el registro los conserva
+       y no se volverán a generar. Para quitar un aviso emitido por error, usa <b>Anular</b>.</p>`,
     [{ texto: "Cancelar", valor: null },
      { texto: `Pendientes (${n.pendientes})`, clase: "peligro-suave", valor: "pendientes" },
      { texto: `Entregados (${n.realizados})`, clase: "peligro-suave", valor: "realizados" },

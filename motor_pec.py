@@ -5,13 +5,15 @@ generación de los documentos de pérdida de evaluación continua (PEC).
 Es la lógica de avisos_PEC.py sin preguntas por teclado: lo que falta (horas de un módulo,
 firma de un profesor) se devuelve como dato pendiente para que lo pida la interfaz web.
 
-Carpetas (dentro de la carpeta del programa; se crean solas si no existen):
+Datos (en DATOS/, dentro de la carpeta del programa; se crean solos si no existen):
   INFORMES_NUEVOS/               PDF subidos, con cualquier nombre
   INFORMES_FALTAS_PROCESAR/      informes con todos los datos, renombrados a FECHA_GRUPO_MODULO_Faltas.pdf
   INFORMES_FALTAS_PROCESADOS/    informes ya procesados
   AVISOS_PENDIENTES/<profesor>/  documentos generados
   AVISOS_REALIZADOS/<profesor>/  documentos ya entregados
-  COPIAS_SEGURIDAD/              copias del registro y de la hoja antes de vaciarlos
+  AVISOS_ANULADOS/<profesor>/    documentos anulados
+  COPIAS_SEGURIDAD/              copias antes de vaciar el registro o la hoja y antes de migrar los datos
+  VERSION_DATOS                  formato de los datos (lo pone al día migrar_datos al arrancar)
 
 Reglas (valor de referencia: columna FI, faltas injustificadas):
   - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
@@ -36,8 +38,10 @@ from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+PROGRAMA = Path(__file__).resolve().parent
+
 # Librerías incluidas en la carpeta lib/; si no están, se usan las instaladas en el sistema
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+sys.path.insert(0, str(PROGRAMA / "lib"))
 
 from openpyxl import Workbook, load_workbook  # noqa: E402
 from openpyxl.styles import Font, PatternFill  # noqa: E402
@@ -56,7 +60,18 @@ PROCESAR = "INFORMES_FALTAS_PROCESAR"
 PROCESADOS = "INFORMES_FALTAS_PROCESADOS"
 PENDIENTES = "AVISOS_PENDIENTES"
 REALIZADOS = "AVISOS_REALIZADOS"
+ANULADOS = "AVISOS_ANULADOS"
 COPIAS = "COPIAS_SEGURIDAD"
+DATOS = "DATOS"
+VERSION_DATOS = "VERSION_DATOS"
+LOG_MIGRACIONES = "migraciones.log"
+
+# Formato de los datos. 2: WebPEC 2.x (datos sueltos en la carpeta del programa);
+# 3: carpeta DATOS/ y registro con anulaciones.
+FORMATO_DATOS = 3
+# Lo que en la 2.x estaba en la carpeta del programa y en la 3 va dentro de DATOS/
+DATOS_2X = [CONFIGURACION, HOJA_MODULOS, REGISTRO, NUEVOS, PROCESAR, PROCESADOS,
+            PENDIENTES, REALIZADOS, COPIAS]
 
 # Nombres que vienen escritos en las plantillas y se sustituyen por los de configuracion.ini
 JEFATURA_PLANTILLA = "Irene Rodil Jiménez"
@@ -399,37 +414,170 @@ def carpeta_profesor(profesor_informe):
     return para_fichero(profesor_informe)
 
 
+def glob_literal(nombre):
+    """Nombre de fichero para usar en glob sin que [ ] * ? se tomen como comodines."""
+    return re.sub(r"([\[\]*?])", r"[\1]", nombre)
+
+
 # ----------------------------------------------------------- registro ---
 
+# Las columnas solo se añaden al final: así un registro antiguo sigue siendo válido
 CAMPOS_REGISTRO = ["fecha_informe", "grupo", "modulo", "nombre_modulo", "profesor", "alumno",
-                   "tipo", "faltas_injustificadas", "umbral", "documento", "fecha_proceso"]
+                   "tipo", "faltas_injustificadas", "umbral", "documento", "fecha_proceso",
+                   "estado", "fecha_anulacion", "motivo_anulacion"]
+ANULADO = "anulado"
 
 
 def leer_registro(ruta):
     if not ruta.exists():
         return []
     with open(ruta, encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f, delimiter=";"))
+        return [{campo: fila.get(campo) or "" for campo in CAMPOS_REGISTRO}
+                for fila in csv.DictReader(f, delimiter=";")]
 
 
-def anotar_registro(ruta, filas):
-    nuevo = not ruta.exists()
+def escribir_registro(ruta, filas):
+    """Reescribe el registro entero (con todas las columnas) a través de un fichero temporal."""
+    temporal = ruta.with_name(ruta.name + ".tmp")
     try:
-        with open(ruta, "a", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=CAMPOS_REGISTRO, delimiter=";")
-            if nuevo:
-                w.writeheader()
+        with open(temporal, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=CAMPOS_REGISTRO, delimiter=";", restval="",
+                               extrasaction="ignore")
+            w.writeheader()
             w.writerows(filas)
+        os.replace(temporal, ruta)
     except PermissionError:
+        temporal.unlink(missing_ok=True)
         raise ErrorPEC(f"No se puede escribir en {REGISTRO}: ciérralo en Excel y vuelve a intentarlo")
 
 
+def anotar_registro(ruta, filas):
+    escribir_registro(ruta, leer_registro(ruta) + list(filas))
+
+
+def anulada(fila):
+    return fila.get("estado") == ANULADO
+
+
+def misma_clave(fila, grupo, siglas, alumno):
+    return (normalizar(fila["grupo"]), normalizar(fila["modulo"]), fila["alumno"]) == \
+        (normalizar(grupo), normalizar(siglas), alumno)
+
+
 def buscar_en_registro(registro, grupo, siglas, alumno, tipo):
+    """Aviso vigente (no anulado) de ese tipo para el alumno en el módulo."""
     for fila in registro:
-        if (normalizar(fila["grupo"]), normalizar(fila["modulo"]), fila["alumno"],
-                fila["tipo"]) == (normalizar(grupo), normalizar(siglas), alumno, tipo):
+        if not anulada(fila) and fila["tipo"] == tipo and misma_clave(fila, grupo, siglas, alumno):
             return fila
     return None
+
+
+# ---------------------------------------------------- migración de datos ---
+
+def version_datos(datos):
+    try:
+        return int((datos / VERSION_DATOS).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def copia_antes_de_migrar(datos, origenes, desde):
+    """ZIP con todo lo que hay en las carpetas y ficheros de datos, en DATOS/COPIAS_SEGURIDAD/."""
+    ficheros = []
+    for origen in origenes:
+        if origen.is_file():
+            ficheros.append((origen, origen.name))
+        elif origen.is_dir():
+            ficheros += [(f, f"{origen.name}/{f.relative_to(origen).as_posix()}")
+                         for f in sorted(origen.rglob("*")) if f.is_file()]
+    carpeta = datos / COPIAS
+    carpeta.mkdir(parents=True, exist_ok=True)
+    destino = carpeta / f"{datetime.now():%Y%m%d_%H%M%S}_antes_de_migrar_datos_v{desde}.zip"
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
+        for fichero, nombre in ficheros:
+            z.write(fichero, nombre)
+    return destino
+
+
+def choques(origen, destino):
+    """Ficheros que ya existen en el destino (mover origen allí los pisaría)."""
+    if origen.is_dir() and destino.is_dir():
+        return [c for hijo in origen.iterdir() for c in choques(hijo, destino / hijo.name)]
+    return [destino] if destino.exists() else []
+
+
+def mover_a_datos(origen, destino):
+    """Mueve un fichero o carpeta de la 2.x a DATOS/; si la carpeta ya existe, junta el contenido."""
+    if origen.is_dir() and destino.is_dir():
+        for hijo in list(origen.iterdir()):
+            mover_a_datos(hijo, destino / hijo.name)
+        origen.rmdir()
+    else:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(origen), str(destino))
+
+
+def migrar_2_a_3(datos, antigua):
+    """Datos sueltos de la 2.x -> DATOS/; el registro gana las columnas de anulación."""
+    hechos = []
+    if antigua:
+        repetidos = [c for n in DATOS_2X if (antigua / n).exists()
+                     for c in choques(antigua / n, datos / n)]
+        if repetidos:
+            raise ErrorPEC(f"No se pueden pasar los datos a {DATOS}/: estos ficheros están a la vez "
+                           f"en la carpeta del programa y en {DATOS}/: "
+                           f"{', '.join(str(r.relative_to(datos)) for r in repetidos)}. "
+                           f"Deja solo la copia buena de cada uno y vuelve a arrancar.")
+        for nombre in DATOS_2X:
+            if (antigua / nombre).exists():
+                mover_a_datos(antigua / nombre, datos / nombre)
+                hechos.append(f"{nombre} pasa a {DATOS}/{nombre}")
+    if (datos / REGISTRO).exists():
+        escribir_registro(datos / REGISTRO, leer_registro(datos / REGISTRO))
+        hechos.append(f"{REGISTRO}: añadidas las columnas de anulación de avisos")
+    return hechos
+
+
+MIGRACIONES = {2: migrar_2_a_3}
+
+
+def migrar_datos(datos, antigua=None):
+    """
+    Pone los datos al formato actual (FORMATO_DATOS) antes de usarlos. antigua es la carpeta donde
+    la 2.x guardaba los datos (la del programa), o None. Antes de tocar nada se guarda un ZIP con
+    todos los datos. Si algo falla a medias, se puede repetir: cada paso comprueba lo que ya está
+    hecho. Devuelve la lista de lo que se ha hecho (vacía si no había nada que hacer).
+    """
+    datos = Path(datos)
+    actual = version_datos(datos)
+    de_la_2x = [antigua / n for n in DATOS_2X if antigua and (antigua / n).exists()]
+    if actual is None and not de_la_2x and not datos.exists():
+        datos.mkdir(parents=True)  # instalación nueva: no hay nada que migrar
+        (datos / VERSION_DATOS).write_text(f"{FORMATO_DATOS}\n", encoding="utf-8")
+        return []
+    if actual is None:
+        actual = 2  # datos de la 2.x, o una migración que no llegó a terminar
+    if actual > FORMATO_DATOS:
+        raise ErrorPEC(f"Los datos de {datos} son de una versión de WebPEC más moderna que esta. "
+                       f"Instala la última versión.")
+    if actual == FORMATO_DATOS:
+        return []
+
+    try:
+        datos.mkdir(parents=True, exist_ok=True)
+        copia = copia_antes_de_migrar(datos, de_la_2x + [datos], actual)
+        hechos = [f"Copia de seguridad de los datos: {DATOS}/{COPIAS}/{copia.name}"]
+        while actual < FORMATO_DATOS:
+            hechos += MIGRACIONES[actual](datos, antigua)
+            actual += 1
+            (datos / VERSION_DATOS).write_text(f"{actual}\n", encoding="utf-8")
+            hechos.append(f"Datos actualizados al formato {actual}")
+    except PermissionError as e:
+        raise ErrorPEC(f"No se pueden actualizar los datos: hay un fichero abierto o bloqueado "
+                       f"({e.filename}). Ciérralo (Excel, LibreOffice…) y vuelve a arrancar WebPEC.")
+    with open(datos / LOG_MIGRACIONES, "a", encoding="utf-8") as log:
+        log.writelines(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {h}\n" for h in hechos)
+    return hechos
 
 
 def evaluar(informe, modulo, registro):
@@ -642,23 +790,26 @@ def convertir_a_pdf(conversor, docx_lista, carpeta):
 # ---------------------------------------------------------------- motor ---
 
 class Motor:
-    """Operaciones de la aplicación sobre la carpeta base."""
+    """Operaciones de la aplicación sobre la carpeta de datos (base)."""
 
-    CARPETAS_DOCUMENTOS = {"pendientes": PENDIENTES, "realizados": REALIZADOS}
+    CARPETAS_DOCUMENTOS = {"pendientes": PENDIENTES, "realizados": REALIZADOS, "anulados": ANULADOS}
 
-    def __init__(self, base):
-        self.base = Path(base).resolve()
+    def __init__(self, base=None):
+        self.base = Path(base or PROGRAMA / DATOS).resolve()
+        # Los datos de la 2.x solo se buscan junto al programa si se usa la carpeta DATOS/ normal
+        antigua = PROGRAMA if self.base == PROGRAMA / DATOS else None
+        self.migracion = migrar_datos(self.base, antigua)
         self.preparar()
 
     def preparar(self):
-        for carpeta in (NUEVOS, PROCESAR, PROCESADOS, PENDIENTES, REALIZADOS):
-            (self.base / carpeta).mkdir(exist_ok=True)
+        for carpeta in (NUEVOS, PROCESAR, PROCESADOS, PENDIENTES, REALIZADOS, ANULADOS):
+            (self.base / carpeta).mkdir(parents=True, exist_ok=True)
         if not (self.base / HOJA_MODULOS).exists():
             crear_hoja_modulos(self.base / HOJA_MODULOS)
         if not (self.base / CONFIGURACION).exists():
             guardar_configuracion(self.base, {})
         for plantilla in (PLANTILLA_AVISO, PLANTILLA_PEC):
-            if not (self.base / PLANTILLAS / plantilla).exists():
+            if not (PROGRAMA / PLANTILLAS / plantilla).exists():
                 raise ErrorPEC(f"Falta la plantilla {PLANTILLAS}/{plantilla}")
 
     def config(self):
@@ -845,7 +996,7 @@ class Motor:
                 nombre = f"{fecha_fichero(config, fecha)}_{a['tipo']}_{para_fichero(grupo)}_" \
                          f"{siglas}_{cortos[a['alumno']]}"
                 docx = Path(tmp) / f"{nombre}.docx"
-                crear_docx(self.base, config, a["tipo"], docx, nombre_completo(a["alumno"]),
+                crear_docx(PROGRAMA, config, a["tipo"], docx, nombre_completo(a["alumno"]),
                            grupo, modulo["nombre"], firma, fecha)
                 docx_lista.append(docx)
                 filas.append({
@@ -940,7 +1091,9 @@ class Motor:
 
     def documentos(self, carpeta):
         raiz = self._carpeta_documentos(carpeta)
-        por_documento = {f["documento"]: f for f in leer_registro(self.base / REGISTRO)}
+        # Un documento anulado y otro nuevo pueden llamarse igual: cada bandeja busca el suyo
+        por_documento = {f["documento"]: f for f in leer_registro(self.base / REGISTRO)
+                         if anulada(f) == (carpeta == "anulados")}
         hoja = self.hoja()
         firmas = {para_fichero(p[1]): p[2] for p in hoja.profesores.values()}
         lista = []
@@ -958,6 +1111,8 @@ class Motor:
                 "fecha": fecha_legible(fila.get("fecha_informe", "")),
                 "orden": fila.get("fecha_informe", ""),
                 "pdf": ruta.suffix.lower() == ".pdf",
+                "fecha_anulacion": fila.get("fecha_anulacion", ""),
+                "motivo_anulacion": fila.get("motivo_anulacion", ""),
             })
         lista.sort(key=lambda d: (d["orden"], d["profesor"], d["archivo"]), reverse=True)
         return lista
@@ -995,15 +1150,13 @@ class Motor:
         return salida.getvalue()
 
     def mover_documentos(self, carpeta, rutas, accion):
-        """accion: 'realizados', 'pendientes' o 'borrar'."""
-        if accion not in ("realizados", "pendientes", "borrar"):
+        """Entre pendientes y entregados. accion: 'realizados' o 'pendientes'."""
+        if accion not in ("realizados", "pendientes") or carpeta == "anulados":
             raise ErrorPEC("Acción no válida")
         hechos = 0
         for relativa in rutas:
             ruta = self.ruta_documento(carpeta, relativa)
-            if accion == "borrar":
-                ruta.unlink()
-            elif accion != carpeta:
+            if accion != carpeta:
                 destino = self._carpeta_documentos(accion) / ruta.parent.name
                 destino.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(ruta), str(destino / ruta.name))
@@ -1018,7 +1171,7 @@ class Motor:
         """cuales: 'pendientes', 'realizados' o 'todos'."""
         if cuales not in ("pendientes", "realizados", "todos"):
             raise ErrorPEC("Opción no válida")
-        claves = list(self.CARPETAS_DOCUMENTOS) if cuales == "todos" else [cuales]
+        claves = ["pendientes", "realizados"] if cuales == "todos" else [cuales]
         borrados = 0
         for clave in claves:
             for ruta in (self.base / self.CARPETAS_DOCUMENTOS[clave]).glob("*/*"):
@@ -1032,6 +1185,52 @@ class Motor:
         for ruta in rutas:
             ruta.unlink()
         return len(rutas)
+
+    # ---- anulación de avisos
+
+    def anular(self, documentos, motivo):
+        """
+        Anula avisos del registro (por nombre de documento): quedan anotados como anulados, con
+        fecha y motivo, y su documento pasa a AVISOS_ANULADOS. Como ya no cuentan, el siguiente
+        informe que se procese puede volver a generarlos.
+        """
+        motivo = re.sub(r"\s+", " ", motivo or "").strip()
+        if not motivo:
+            raise ErrorPEC("Indica el motivo de la anulación")
+        if not documentos:
+            raise ErrorPEC("No hay ningún aviso elegido")
+        registro = leer_registro(self.base / REGISTRO)
+        filas = []
+        for documento in dict.fromkeys(documentos):
+            fila = next((f for f in registro if f["documento"] == documento and not anulada(f)), None)
+            if fila is None:
+                raise ErrorPEC(f"{documento} no está en el registro o ya está anulado")
+            filas.append(fila)
+        # Sin el aviso del 7,5 % no puede quedar en pie la pérdida del 15 %
+        for fila in filas:
+            if fila["tipo"] == AVISO:
+                perdida = buscar_en_registro(registro, fila["grupo"], fila["modulo"], fila["alumno"], PEC)
+                if perdida is not None and not any(perdida is f for f in filas):
+                    raise ErrorPEC(f"{fila['alumno']} ({fila['grupo']}, {fila['modulo']}) tiene también la "
+                                   f"pérdida del 15 %: anúlala antes, o las dos a la vez")
+        ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
+        for fila in filas:
+            fila.update(estado=ANULADO, fecha_anulacion=ahora, motivo_anulacion=motivo)
+        escribir_registro(self.base / REGISTRO, registro)
+
+        movidos = 0
+        for fila in filas:
+            for carpeta in (PENDIENTES, REALIZADOS):
+                for ruta in (self.base / carpeta).glob(f"*/{glob_literal(fila['documento'])}"):
+                    destino = self.base / ANULADOS / ruta.parent.name / ruta.name
+                    n = 2
+                    while destino.exists():
+                        destino = destino.with_name(f"{ruta.stem} ({n}){ruta.suffix}")
+                        n += 1
+                    destino.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(ruta), str(destino))
+                    movidos += 1
+        return {"anulados": len(filas), "documentos": movidos}
 
     # ---- borrados completos de datos (con copia de seguridad)
 

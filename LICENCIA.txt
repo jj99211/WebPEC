@@ -1,0 +1,30 @@
+WebPEC — Avisos de pérdida de evaluación continua
+Copyright © 2026 Departamento de Informática del IES Rosa Chacel (Madrid)
+
+LICENCIA
+--------
+WebPEC se distribuye con la licencia Creative Commons
+Reconocimiento-NoComercial-CompartirIgual 4.0 Internacional (CC BY-NC-SA 4.0).
+
+  Resumen:  https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es
+  Texto legal completo:  https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.es
+
+Se permite, libremente:
+  - Usar el programa y sus documentos.
+  - Copiarlo y distribuirlo en cualquier medio o formato.
+  - Modificarlo, adaptarlo y crear obras derivadas.
+
+Con estas condiciones:
+  - Reconocimiento: hay que citar al autor (Departamento de Informática del IES Rosa Chacel,
+    Madrid), enlazar la licencia e indicar si se han hecho cambios.
+  - No comercial: no se puede usar con fines comerciales ni para obtener beneficio económico.
+  - Compartir igual: las versiones modificadas deben distribuirse con esta misma licencia.
+
+QUÉ NO CUBRE ESTA LICENCIA
+--------------------------
+  - Las librerías de la carpeta lib/ (pypdf, openpyxl, et_xmlfile, typing_extensions) son de
+    sus autores y conservan sus propias licencias libres (BSD, MIT y PSF), incluidas junto a
+    cada una en lib/.
+  - El escudo del IES Rosa Chacel (web/escudo.png, web/escudo.ico, web/favicon.png) pertenece
+    al centro y no se licencia con WebPEC.
+  - Las plantillas de los documentos (carpeta plantillas/) siguen los modelos oficiales del centro.
