@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
-*Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid)*
-*Manual de la versión 3.00*
+*Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
+Manual de la versión 3.10*
 
 ---
 
@@ -29,15 +29,22 @@ Todo el departamento usa la misma instalación y ve los avisos de todos.
 **Requisitos:** Python 3.9 o posterior (en Windows, al instalarlo, marcar «Add Python to PATH»). Para que los
 avisos salgan en PDF hace falta LibreOffice o Microsoft Word; sin ninguno de los dos se generan en Word (.docx).
 
-**Instalar** (una sola vez):
+**Instalar o actualizar** (lo mismo en los dos casos):
 
-1. Descomprimir el ZIP de WebPEC y dejar la carpeta `WebPEC` donde se quiera.
+1. Descomprimir el ZIP de WebPEC en cualquier sitio, por ejemplo en Descargas (en Windows: botón derecho →
+   «Extraer todo»; el instalador no funciona abriéndolo desde dentro del ZIP).
 2. Doble clic en el instalador: `Instalar_WebPEC.bat` (Windows) o `Instalar_WebPEC.sh` (Linux; si el
    explorador pregunta, elegir «Ejecutar»).
+3. El instalador pregunta **dónde instalar**. Basta con pulsar Intro para la opción recomendada:
+   - si en el ordenador ya hay un WebPEC (lo reconoce por el icono del escritorio): **actualizar esa
+     instalación**, conservando todos sus datos;
+   - si no lo hay: instalar en la carpeta **Documentos/WebPEC**;
+   - también se puede dejar donde está o escribir otra carpeta.
 
-El instalador comprueba Python, crea el icono «WebPEC» con el escudo del instituto en el escritorio (en Linux,
-también en el menú de aplicaciones), prepara los datos y arranca la aplicación. Se puede repetir sin riesgo, por
-ejemplo para rehacer el icono si se mueve la carpeta.
+El instalador comprueba Python, copia el programa (nunca los datos), crea el icono «WebPEC» con el escudo del
+instituto en el escritorio (en Linux, también en el menú de aplicaciones) y arranca la aplicación. Si WebPEC está
+abierto, pide cerrarlo antes. Después, la carpeta descomprimida ya no hace falta y se puede borrar. Se puede
+repetir sin riesgo, por ejemplo para rehacer el icono si se mueve la carpeta.
 
 **Arrancar** (cada día): doble clic en el icono «WebPEC» del escritorio (o en `WebPEC.bat` / `WebPEC.sh`).
 
@@ -49,15 +56,23 @@ terminal tiene que seguir abierta** mientras se usa WebPEC; en Windows queda min
 **Cerrar:** botón de apagado (arriba a la derecha). Aparece la pantalla «WebPEC se ha cerrado» y ya se puede
 cerrar la pestaña.
 
-**Actualizar a una versión nueva:** cerrar WebPEC y descomprimir el ZIP nuevo encima de la carpeta, sustituyendo
-los ficheros. Los datos están en la carpeta `DATOS` y no se tocan. Si son de una versión anterior, al arrancar
-WebPEC guarda una copia de seguridad, los pone al día y muestra un aviso con lo que ha hecho.
+**Datos de una versión anterior:** si los datos son de una versión anterior, al arrancar WebPEC guarda una copia
+de seguridad, los pone al día y muestra un aviso con lo que ha hecho. No se pierde nada.
+
+**¿Quién eres?** Al abrir WebPEC hay que elegir el propio nombre en la lista del profesorado: WebPEC anota quién
+procesa, entrega y anula cada aviso. Quien todavía no está en la lista (porque aún no se ha procesado ningún informe
+suyo) elige «Soy nuevo/a» y escribe su **nombre** y sus **apellidos** como aparecen en Raíces (las tildes no
+importan): así, cuando llegue su primer informe, WebPEC ya lo reconoce. El nombre elegido se ve bajo el título;
+haciendo clic en él se cambia.
+
+**Ayuda:** la pestaña **Ayuda** abre este manual en otra pestaña del navegador, con un botón para imprimirlo o
+guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_USUARIO.pdf`).
 
 ## 3. Uso habitual paso a paso
 
 1. **Descargar de Raíces** el «Listado de faltas totales» de cada grupo y módulo, en PDF. El nombre del fichero
    da igual.
-2. Abrir WebPEC y, en la pestaña **Informes**, **arrastrar los PDF** a la zona de subida (o hacer clic en ella
+2. Abrir WebPEC, elegir el propio nombre en «¿Quién eres?» y, en la pestaña **Informes**, **arrastrar los PDF** a la zona de subida (o hacer clic en ella
    para elegirlos).
 3. Revisar la lista de *Informes pendientes de procesar*: muestra el nombre que recibirá cada informe
    (`FECHA_GRUPO_MÓDULO_Faltas.pdf`).
@@ -84,7 +99,8 @@ WebPEC guarda una copia de seguridad, los pone al día y muestra un aviso con lo
 
 ### Avisos
 
-- **Pendientes de entregar / Entregados / Anulados:** cambia entre las tres bandejas.
+- **Pendientes de entregar / Entregados / Anulados:** cambia entre las tres bandejas. En Entregados y Anulados
+  se ve cuándo y quién lo hizo.
 - **Filtros:** por profesor/a, por tipo (7,5 % o 15 %) y búsqueda por alumno, grupo o módulo.
 - **Casillas de selección:** al marcar uno o varios avisos aparece una barra inferior con:
   - **Imprimir:** une los avisos marcados en un solo PDF y abre la impresión.
@@ -107,14 +123,35 @@ justificaron…), se marca y se pulsa **Anular…**. WebPEC pide el **motivo** (
 Una pérdida del 15 % se apoya en su aviso del 7,5 %: para anular el aviso hay que anular antes la pérdida, o las
 dos a la vez.
 
+### Alumnado
+
+La situación de cada alumno/a en cada módulo, según el **último informe procesado** de ese módulo: faltas (FI),
+porcentaje de horas, umbrales y situación:
+
+- **Sin avisos**: no llega al 7,5 %.
+- **Supera el 7,5 % sin aviso**: le corresponde un aviso que no tiene vigente (por ejemplo, porque se anuló); el
+  siguiente informe lo generará.
+- **Aviso 7,5 %** (con su fecha; indica si ya supera el 15 %) y **Pérdida 15 %**.
+
+Se puede filtrar por grupo, módulo, profesor/a y situación, y buscar por nombre. Se calcula con los informes que se
+conservan en «Informes ya procesados»: si se borran, sus módulos desaparecen de esta vista.
+
+**Importar correos…** guarda el correo electrónico de cada alumno/a desde un fichero CSV o Excel (por ejemplo, una
+exportación de Raíces o de EducaMadrid) con su nombre y su correo; si el fichero tiene columna de grupo o unidad,
+también se usa. Las columnas se reconocen solas y los correos que ya había se actualizan. Los correos se ven en esta
+pestaña; **WebPEC no envía nada**.
+
 ### Registro
 
-Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI), umbral, profesor/a y
-fecha de generación. Tiene un buscador.
+Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI), umbral, profesor/a,
+fecha de generación y quién lo generó (y, si se entregó o anuló, cuándo y quién). Tiene un buscador.
 Gracias al registro **un aviso nunca se repite**, salvo que se anule. Los avisos anulados aparecen tachados, con
 la fecha y el motivo. El enlace **Anular** de cada fila sirve también para avisos cuyo documento ya no existe.
 **Vaciar registro** lo deja en blanco (por ejemplo, al empezar un curso nuevo); antes guarda una copia de
 seguridad.
+
+**Actividad: quién ha hecho qué** (desplegable al final): cada acción con su fecha y la persona que la hizo
+(subir y procesar informes, entregar, anular, cambiar módulos o configuración, importar o exportar datos…).
 
 ### Módulos
 
@@ -122,7 +159,8 @@ seguridad.
   7,5 % y del 15 %. Los módulos nuevos se registran solos al subir su primer informe. Las siglas de un módulo con
   avisos no se pueden cambiar.
 - **Profesorado:** nombre tal y como viene en el informe (Raíces lo escribe sin tildes) y nombre correcto para la
-  firma.
+  firma. **Añadir profesor/a…** da de alta a alguien que aún no tiene informes (con su nombre y apellidos como en
+  Raíces); **Borrar** quita a alguien de la lista (sus avisos no se tocan).
 - **Borrar todos los módulos y profesores:** deja la hoja en blanco, con copia de seguridad previa.
 
 ### Configuración
@@ -132,6 +170,11 @@ seguridad.
   programa para pasar a PDF (automático, LibreOffice, Word o ninguno).
 - **Aplicación:** puerto y acceso desde otros ordenadores de la red del centro (se aplican al volver a arrancar).
 - **Guardar configuración** para aplicar los cambios.
+- **Copia de los datos:**
+  - **Exportar datos (ZIP):** descarga todos los datos (registro, módulos, profesorado, informes, avisos, correos y
+    actividad) en un solo ZIP. Sirve como copia de seguridad o para llevarlos a otro ordenador.
+  - **Importar datos…:** sustituye los datos por los de un ZIP exportado (también de una versión anterior). Antes
+    guarda una copia de los datos actuales en `COPIAS_SEGURIDAD`.
 
 ### Botón de apagado
 
@@ -162,9 +205,11 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | `registro_avisos.csv` | Registro de avisos emitidos (no borrar filas a mano) |
 | `configuracion.ini` | Configuración |
 | `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos y antes de poner al día los datos de una versión anterior |
+| `correos_alumnado.csv` | Correos del alumnado importados |
+| `actividad.csv` | Quién ha hecho cada acción y cuándo |
 | `VERSION_DATOS`, `migraciones.log` | Formato de los datos e historial de sus actualizaciones |
 
-**Copia de seguridad:** basta con copiar la carpeta `DATOS` entera.
+**Copia de seguridad:** «Exportar datos» (en Configuración) o copiar la carpeta `DATOS` entera.
 
 ## 7. Problemas frecuentes
 
@@ -176,6 +221,9 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | Error al guardar módulos o profesores | `PEC_MODULOS.xlsx` está abierto en Excel: cerrarlo y repetir. |
 | Un alumno no recibe el aviso del 15 % | Necesita el aviso del 7,5 % en un informe anterior y haber acumulado más faltas desde entonces. |
 | El icono del escritorio ya no funciona | La carpeta se ha movido: volver a ejecutar el instalador. |
+| El instalador se cierra enseguida (Windows) | Se ha abierto desde dentro del ZIP: descomprimirlo antes («Extraer todo»). |
+| «Indica quién eres antes de hacer cambios» | Elegir el propio nombre haciendo clic bajo el título de WebPEC. |
+| No aparezco en la lista de «¿Quién eres?» | Elegir «Soy nuevo/a» y escribir nombre y apellidos como en Raíces. |
 | Al arrancar dice que no puede actualizar los datos | Hay un fichero de datos abierto (Excel, LibreOffice): cerrarlo y volver a arrancar. |
 | Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. |
 

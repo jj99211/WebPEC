@@ -11,13 +11,27 @@ function esc(texto) {
   })[c]);
 }
 
+// Quién usa WebPEC en esta pestaña: se manda en cada petición y queda anotado en lo que haga
+let usuario = "";
+try { usuario = sessionStorage.getItem("webpec-usuario") || ""; } catch (e) { /* sin almacenamiento */ }
+const cabeceraUsuario = () => ({ "X-WebPEC-Usuario": encodeURIComponent(usuario) });
+
 async function api(ruta, datos) {
-  const opciones = datos === undefined ? {} : {
+  const opciones = datos === undefined ? { headers: cabeceraUsuario() } : {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...cabeceraUsuario() },
     body: JSON.stringify(datos),
   };
   const r = await fetch(ruta, opciones);
+  const json = await r.json().catch(() => ({ error: "Respuesta no válida del servidor" }));
+  if (!r.ok || json.error) throw new Error(json.error || `Error ${r.status}`);
+  return json;
+}
+
+/** Sube un fichero tal cual (informe, correos, datos). */
+async function subirFichero(ruta, fichero, parametros = {}) {
+  const consulta = new URLSearchParams({ nombre: fichero.name, ...parametros });
+  const r = await fetch(`${ruta}?${consulta}`, { method: "POST", body: fichero, headers: cabeceraUsuario() });
   const json = await r.json().catch(() => ({ error: "Respuesta no válida del servidor" }));
   if (!r.ok || json.error) throw new Error(json.error || `Error ${r.status}`);
   return json;
@@ -73,6 +87,8 @@ function fechaHora(iso) {
   return m ? `${m[3]}/${m[2]}/${m[1]}${m[4]}` : (iso || "");
 }
 
+const porQuien = nombre => nombre ? ` por ${esc(nombre)}` : "";
+
 function plural(n, uno, varios) { return `${n} ${n === 1 ? uno : varios}`; }
 
 function guardarPreferencia(clave, valor) { try { localStorage.setItem(clave, valor); } catch (e) { /* sin almacenamiento */ } }
@@ -99,11 +115,7 @@ function subirFicheros(ficheros) {
   const pdfs = [...ficheros].filter(f => /\.pdf$/i.test(f.name));
   if (!pdfs.length) { tostada("Solo se admiten ficheros PDF", "error"); return; }
   tostada(`Subiendo ${plural(pdfs.length, "informe", "informes")}…`);
-  Promise.all(pdfs.map(async f => {
-    const r = await fetch(`/api/subir?nombre=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
-    const json = await r.json();
-    if (!r.ok) throw new Error(json.error);
-  })).then(() => {
+  Promise.all(pdfs.map(f => subirFichero("/api/subir", f))).then(() => {
     tostada(`${plural(pdfs.length, "informe subido", "informes subidos")}. Pulsa «Procesar informes» cuando quieras.`, "ok");
   }).catch(error).finally(cargarInformes);
 }
@@ -352,7 +364,8 @@ function pintarAvisos() {
       <td class="col-check"><input type="checkbox" data-ruta="${esc(d.ruta)}" ${estadoAvisos.marcados.has(d.ruta) ? "checked" : ""}></td>
       <td>${chipTipo(d.tipo)}</td>
       <td>${esc(d.alumno || d.archivo)}${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}
-        ${carpeta === "anulados" ? `<span class="motivo">Anulado el ${esc(fechaHora(d.fecha_anulacion))}: ${esc(d.motivo_anulacion)}</span>` : ""}</td>
+        ${carpeta === "anulados" ? `<span class="motivo">Anulado el ${esc(fechaHora(d.fecha_anulacion))}${porQuien(d.anulado_por)}: ${esc(d.motivo_anulacion)}</span>` : ""}
+        ${carpeta === "realizados" && d.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(d.fecha_entrega))}${porQuien(d.entregado_por)}</span>` : ""}</td>
       <td>${esc(d.grupo)}</td>
       <td class="secundario">${esc(d.modulo)}</td>
       <td class="num">${esc(d.fi)}</td>
@@ -532,24 +545,37 @@ let filasRegistro = [];
 async function cargarRegistro() {
   try { filasRegistro = await api("/api/registro"); } catch (e) { error(e); }
   pintarRegistro();
+  if ($("#plegable-actividad").open) cargarActividad();
 }
+
+async function cargarActividad() {
+  let filas = [];
+  try { filas = await api("/api/actividad"); } catch (e) { error(e); }
+  $("#tabla-actividad tbody").innerHTML = filas.length ? filas.map(f => `<tr>
+      <td class="secundario">${esc(fechaHora(f.fecha))}</td><td>${esc(f.usuario)}</td>
+      <td>${esc(f.accion)}</td><td class="secundario">${esc(f.detalle)}</td></tr>`).join("")
+    : '<tr><td colspan="4" class="vacio">Todavía no hay actividad anotada.</td></tr>';
+}
+$("#plegable-actividad").addEventListener("toggle", ev => { if (ev.target.open) cargarActividad(); });
 cargadores.registro = cargarRegistro;
 
 function pintarRegistro() {
   const texto = $("#filtro-registro").value.trim().toLowerCase();
   const filas = filasRegistro.filter(f => !texto ||
-    [f.alumno, f.grupo, f.nombre_modulo, f.modulo, f.profesor, f.fecha, f.estado, f.motivo_anulacion].join(" ").toLowerCase().includes(texto));
+    [f.alumno, f.grupo, f.nombre_modulo, f.modulo, f.profesor, f.fecha, f.estado, f.motivo_anulacion,
+     f.generado_por, f.entregado_por, f.anulado_por].join(" ").toLowerCase().includes(texto));
   $("#tabla-registro tbody").innerHTML = filas.length ? filas.map(f => {
     const anulada = f.estado === "anulado";
     return `<tr class="${anulada ? "anulada" : ""}">
       <td>${esc(f.fecha)}</td>
       <td>${anulada ? `<span class="chip anulado" title="${esc(f.motivo_anulacion)}">${f.tipo === "PEC" ? "Pérdida 15 %" : "Aviso 7,5 %"}</span>` : chipTipo(f.tipo)}</td>
       <td>${anulada ? `<span class="tachado">${esc(f.alumno)}</span>
-        <span class="motivo">Anulado el ${esc(fechaHora(f.fecha_anulacion))}: ${esc(f.motivo_anulacion)}</span>` : esc(f.alumno)}</td>
+        <span class="motivo">Anulado el ${esc(fechaHora(f.fecha_anulacion))}${porQuien(f.anulado_por)}: ${esc(f.motivo_anulacion)}</span>` : esc(f.alumno)}
+        ${f.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(f.fecha_entrega))}${porQuien(f.entregado_por)}</span>` : ""}</td>
       <td>${esc(f.grupo)}</td>
       <td class="secundario">${esc(f.nombre_modulo)}</td><td class="num">${esc(f.faltas_injustificadas)}</td>
       <td class="num">${esc(f.umbral)}</td><td class="secundario">${esc(f.profesor)}</td>
-      <td class="secundario">${esc(f.fecha_proceso)}</td>
+      <td class="secundario">${esc(fechaHora(f.fecha_proceso))}${f.generado_por ? `<span class="motivo">${porQuien(f.generado_por).trim()}</span>` : ""}</td>
       <td class="acciones-fila">${anulada ? "" : `<button class="enlace peligro" data-anular="${esc(f.documento)}">Anular</button>`}</td></tr>`;
   }).join("")
     : '<tr><td colspan="10" class="vacio">No hay avisos registrados.</td></tr>';
@@ -588,7 +614,8 @@ async function cargarModulos() {
     <tr data-profesor="${esc(p.profesor)}">
       <td class="secundario">${esc(p.profesor)}</td>
       <td><input name="firma" value="${esc(p.firma)}"></td>
-      <td class="acciones-fila"><button class="enlace" data-guardar-profesor>Guardar</button></td></tr>`).join("")
+      <td class="acciones-fila"><button class="enlace" data-guardar-profesor>Guardar</button>
+        <button class="enlace peligro" data-borrar-profesor>Borrar</button></td></tr>`).join("")
     : '<tr><td colspan="3" class="vacio">Todavía no hay profesores registrados.</td></tr>';
 }
 cargadores.modulos = cargarModulos;
@@ -612,6 +639,15 @@ $("#vista-modulos").addEventListener("click", async ev => {
       await api("/api/modulo/borrar", { fila: fila.dataset.fila });
       tostada("Módulo borrado", "ok");
       cargarModulos();
+    } else if (ev.target.matches("[data-borrar-profesor]")) {
+      const ok = await dialogo("Borrar profesor/a",
+        `<p>Se quitará <b>${esc($("[name=firma]", fila).value)}</b> de la lista del profesorado.</p>
+         <p class="nota">Sus avisos no se tocan. Si vuelve a llegar un informe suyo, se pedirá otra vez su firma.</p>`,
+        [{ texto: "Cancelar", valor: false }, { texto: "Borrar", clase: "peligro", valor: true }]);
+      if (!ok) return;
+      await api("/api/profesor/borrar", { profesor: fila.dataset.profesor });
+      tostada("Profesor/a borrado", "ok");
+      cargarModulos();
     } else if (ev.target.matches("[data-guardar-profesor]")) {
       await api("/api/profesor", { profesor: fila.dataset.profesor, firma: $("[name=firma]", fila).value });
       tostada("Nombre guardado", "ok");
@@ -634,7 +670,7 @@ async function cargarConfig() {
     $("#carpeta-datos").textContent = `Carpeta de datos: ${r.carpeta}`;
     pintarCabecera(r.config, r.version);
     if (r.migracion?.length) {
-      dialogo(`Datos actualizados a WebPEC ${r.version}`,
+      await dialogo(`Datos actualizados a WebPEC ${r.version}`,
         `<p>Al arrancar, WebPEC ha puesto al día los datos de la versión anterior. No se ha perdido nada.</p>
          <ul class="lista-modal">${r.migracion.map(h => `<li>${esc(h)}</li>`).join("")}</ul>`,
         [{ texto: "Entendido", clase: "principal", valor: true }]);
@@ -660,6 +696,166 @@ function pintarCabecera(config, version) {
     document.title = `WebPEC ${version}`;
   }
 }
+
+// ------------------------------------------------------------- usuario ---
+
+const camposNombre = `
+  <div class="fila-campos">
+    <label class="campo-motivo">Nombre<input id="profesor-nombre" placeholder="p. ej. José Antonio"></label>
+    <label class="campo-motivo">Apellidos<input id="profesor-apellidos" placeholder="p. ej. Jiménez Castillo"></label>
+  </div>`;
+
+function pintarUsuario() { $("#nombre-usuario").textContent = usuario || "¿Quién eres?"; }
+
+function fijarUsuario(nombre) {
+  usuario = nombre;
+  try { sessionStorage.setItem("webpec-usuario", nombre); } catch (e) { /* sin almacenamiento */ }
+  guardarPreferencia("webpec-ultimo-usuario", nombre);
+  pintarUsuario();
+}
+
+/** Pregunta quién usa WebPEC. Hasta que no se elige (o se da de alta), no se puede seguir. */
+async function elegirUsuario() {
+  let lista = [];
+  try { lista = (await api("/api/usuarios")).usuarios; } catch (e) { error(e); }
+  const ultimo = usuario || leerPreferencia("webpec-ultimo-usuario");
+  for (;;) {
+    const espera = dialogo("¿Quién eres?",
+      `<p>WebPEC anota quién procesa, entrega y anula cada aviso.</p>
+       ${lista.length ? `<label class="campo-motivo">Profesor/a<select id="usuario-elegido">
+         ${lista.map(n => `<option ${n === ultimo ? "selected" : ""}>${esc(n)}</option>`).join("")}
+         <option value="">Soy nuevo/a: no estoy en la lista</option></select></label>` : ""}
+       <div id="usuario-nuevo" class="${lista.length ? "oculto" : ""}">
+         <p class="nota">${lista.length ? "" : "Todavía no hay nadie registrado. "}Escribe tu nombre y tus apellidos
+           como aparecen en Raíces (las tildes no importan): así WebPEC reconocerá tus informes.</p>${camposNombre}
+       </div>`,
+      [{ texto: "Entrar", clase: "principal", valor: true }]);
+    const selector = $("#usuario-elegido");
+    if (selector) selector.onchange = () => $("#usuario-nuevo").classList.toggle("oculto", selector.value !== "");
+    const ok = await espera;
+    if (!ok && usuario) return;  // cerrado sin elegir: se sigue como estaba
+    if (selector && selector.value) { fijarUsuario(selector.value); return; }
+    try {
+      const r = await api("/api/profesor/nuevo", { nombre: $("#profesor-nombre").value, apellidos: $("#profesor-apellidos").value });
+      fijarUsuario(r.firma);
+      tostada(r.nuevo ? `Bienvenido/a, ${r.firma}` : `Ya estabas registrado/a como ${r.firma}`, "ok");
+      return;
+    } catch (e) { error(e); }
+  }
+}
+$("#boton-usuario").addEventListener("click", elegirUsuario);
+
+$("#boton-nuevo-profesor").addEventListener("click", async () => {
+  const ok = await dialogo("Añadir profesor/a",
+    `<p>Para quien todavía no tiene informes procesados. Escribe el nombre y los apellidos como aparecen en Raíces
+      (las tildes no importan): cuando llegue su primer informe, WebPEC ya lo reconocerá.</p>${camposNombre}`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Añadir", clase: "principal", valor: true }]);
+  if (!ok) return;
+  try {
+    const r = await api("/api/profesor/nuevo", { nombre: $("#profesor-nombre").value, apellidos: $("#profesor-apellidos").value });
+    tostada(r.nuevo ? `Añadido: ${r.firma}` : `${r.firma} ya estaba en la lista`, "ok");
+    cargarModulos();
+  } catch (e) { error(e); }
+});
+
+// ------------------------------------------------------------ alumnado ---
+
+let alumnado = { alumnos: [], informes: 0, sin_modulo: [] };
+
+const SITUACIONES = {
+  sin_avisos: () => '<span class="chip ok">Sin avisos</span>',
+  supera: () => '<span class="chip info" title="Supera el 7,5 % pero no tiene un aviso vigente (p. ej. se anuló): el siguiente informe lo generará">Supera el 7,5 % sin aviso</span>',
+  aviso: a => `${chipTipo("AVISO_PEC")}<span class="motivo">del ${esc(a.fecha_aviso)}${a.supera_15 ? " · ya supera el 15 %" : ""}</span>`,
+  perdida: a => `${chipTipo("PEC")}<span class="motivo">del ${esc(a.fecha_perdida)}</span>`,
+};
+
+async function cargarAlumnado() {
+  const cuerpo = $("#tabla-alumnado tbody");
+  if (!alumnado.alumnos.length) cuerpo.innerHTML = '<tr><td colspan="10" class="cargando">Leyendo los informes procesados…</td></tr>';
+  try { alumnado = await api("/api/alumnado"); } catch (e) { error(e); }
+  for (const [id, campo, todos] of [["#filtro-al-grupo", "grupo", "Todos los grupos"],
+    ["#filtro-al-modulo", "modulo", "Todos los módulos"], ["#filtro-al-profesor", "profesor", "Todos los profesores"]]) {
+    const filtro = $(id), elegido = filtro.value;
+    const valores = [...new Set(alumnado.alumnos.map(a => a[campo]))].sort();
+    filtro.innerHTML = `<option value="">${todos}</option>` +
+      valores.map(v => `<option ${v === elegido ? "selected" : ""}>${esc(v)}</option>`).join("");
+  }
+  pintarAlumnado();
+}
+cargadores.alumnado = cargarAlumnado;
+
+function pintarAlumnado() {
+  const [grupo, modulo, profesor, estado] = ["#filtro-al-grupo", "#filtro-al-modulo", "#filtro-al-profesor", "#filtro-al-estado"].map(s => $(s).value);
+  const texto = $("#filtro-al-texto").value.trim().toLowerCase();
+  const filas = alumnado.alumnos.filter(a => (!grupo || a.grupo === grupo) && (!modulo || a.modulo === modulo) &&
+    (!profesor || a.profesor === profesor) && (!estado || a.estado === estado) &&
+    (!texto || `${a.alumno} ${a.correo}`.toLowerCase().includes(texto)));
+  $("#tabla-alumnado tbody").innerHTML = filas.length ? filas.map(a => `<tr>
+      <td>${esc(a.alumno)}${a.correo ? `<span class="motivo">${esc(a.correo)}</span>` : ""}</td>
+      <td>${esc(a.grupo)}</td><td class="secundario" title="${esc(a.siglas)}">${esc(a.modulo)}</td>
+      <td class="num">${a.fi}</td><td class="num">${esc(a.porcentaje)} %</td>
+      <td class="num">${esc(a.umbral_75)}</td><td class="num">${esc(a.umbral_15)}</td>
+      <td>${SITUACIONES[a.estado](a)}</td><td>${esc(a.informe)}</td><td class="secundario">${esc(a.profesor)}</td></tr>`).join("")
+    : `<tr><td colspan="10" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
+        : "No hay informes procesados. La situación se calcula con los informes que se conservan en «Informes ya procesados»."}</td></tr>`;
+  const con = n => alumnado.alumnos.filter(a => a.estado === n).length;
+  $("#nota-alumnado").innerHTML = `Según el último informe procesado de cada módulo (${plural(alumnado.informes, "módulo", "módulos")}):
+    ${plural(alumnado.alumnos.length, "alumno/a", "alumnos/as")} · ${con("aviso")} con aviso · ${con("perdida")} con pérdida
+    ${con("supera") ? `· <b>${con("supera")} superan el 7,5 % sin aviso vigente</b>` : ""}` +
+    (alumnado.sin_modulo.length ? `<br>⚠ Sin datos del módulo en la hoja: ${esc(alumnado.sin_modulo.join(", "))}` : "");
+}
+["#filtro-al-grupo", "#filtro-al-modulo", "#filtro-al-profesor", "#filtro-al-estado"].forEach(s => $(s).addEventListener("change", pintarAlumnado));
+$("#filtro-al-texto").addEventListener("input", pintarAlumnado);
+
+$("#boton-importar-correos").addEventListener("click", async () => {
+  const ok = await dialogo("Importar correos del alumnado",
+    `<p>Elige un fichero CSV o Excel con el nombre del alumno/a y su correo (por ejemplo, una exportación de Raíces o
+      de EducaMadrid). Las columnas se reconocen solas; si hay columna de grupo o unidad, también se usa.</p>
+     <p class="nota">Los correos solo se guardan como dato: WebPEC no envía nada. Los que ya estaban se actualizan.</p>
+     <label class="campo-motivo">Grupo (solo si el fichero no lo indica; puede quedar vacío)<input id="grupo-correos" placeholder="p. ej. ASIR2A"></label>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Elegir fichero…", clase: "principal", valor: true }]);
+  if (!ok) return;
+  $("#selector-correos").dataset.grupo = $("#grupo-correos").value.trim();
+  $("#selector-correos").click();
+});
+$("#selector-correos").addEventListener("change", async ev => {
+  const fichero = ev.target.files[0];
+  ev.target.value = "";
+  if (!fichero) return;
+  try {
+    const r = await subirFichero("/api/correos/importar", fichero, { grupo: ev.target.dataset.grupo || "" });
+    tostada(`Correos: ${r.leidos} leídos, ${r.nuevos} nuevos, ${r.actualizados} actualizados`, "ok");
+    cargarAlumnado();
+  } catch (e) { error(e); }
+});
+
+// ------------------------------------------------- exportar e importar ---
+
+$("#boton-exportar").addEventListener("click", () => {
+  window.location.href = `/datos/exportar?usuario=${encodeURIComponent(usuario)}`;
+});
+$("#boton-importar").addEventListener("click", async () => {
+  const ok = await dialogo("Importar datos",
+    `<p>Los datos de este WebPEC se <b>sustituirán</b> por los del ZIP (uno exportado con «Exportar datos», de este u otro
+      ordenador; también de una versión anterior).</p>
+     <p class="nota">Antes se guarda una copia de los datos actuales en COPIAS_SEGURIDAD, por si hay que volver atrás.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Elegir el ZIP…", clase: "peligro", valor: true }]);
+  if (ok) $("#selector-datos").click();
+});
+$("#selector-datos").addEventListener("change", async ev => {
+  const fichero = ev.target.files[0];
+  ev.target.value = "";
+  if (!fichero) return;
+  try {
+    const r = await subirFichero("/api/datos/importar", fichero);
+    await dialogo("Datos importados",
+      `<p>Se han importado ${plural(r.ficheros, "fichero", "ficheros")}. Los datos anteriores quedan en <b>${esc(r.copia)}</b>.</p>
+       ${r.migracion.length ? `<ul class="lista-modal">${r.migracion.map(h => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+       <p class="nota">Si el puerto o el acceso en red han cambiado, se aplicarán al volver a arrancar WebPEC.</p>`,
+      [{ texto: "Recargar", clase: "principal", valor: true }]);
+    location.reload();
+  } catch (e) { error(e); }
+});
 
 // -------------------------------------------------------------- cerrar ---
 
@@ -751,7 +947,9 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && !$("#modal").classList.contains("oculto")) $("#modal").click();
 });
 
-cargarConfig();
+pintarUsuario();
 contarPendientes();
+// Primero el aviso de datos actualizados (si lo hay) y después, si hace falta, quién eres
+cargarConfig().then(() => { if (!usuario) elegirUsuario(); });
 const vistaInicial = location.hash.slice(1) || leerPreferencia("webpec-vista");
 mostrarVista($(`#vista-${vistaInicial}`) ? vistaInicial : "informes");

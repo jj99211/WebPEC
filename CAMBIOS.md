@@ -8,6 +8,28 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.10 — 2026-10-28
+
+- **El instalador instala y actualiza solo.** Pregunta dónde instalar: si ya hay un WebPEC en el ordenador (lo
+  reconoce por el icono del escritorio), ofrece **actualizarlo** conservando sus datos; si no, propone
+  `Documentos/WebPEC`; también se puede dejar donde está o escribir otra carpeta. Copia el programa (nunca los
+  datos), quita los ficheros que ya no se usan, pide cerrar WebPEC si está abierto, rehace el icono y arranca.
+  Ya no hace falta copiar carpetas a mano: basta con descomprimir el ZIP y hacer doble clic en el instalador.
+- **¿Quién eres?** Al abrir WebPEC se elige el propio nombre (bajo el título se ve y se cambia). Quien aún no tiene
+  informes procesados elige «Soy nuevo/a» y escribe nombre y apellidos como en Raíces: así su primer informe ya lo
+  reconoce. También desde Módulos → **Añadir profesor/a…** (y **Borrar** en cada fila).
+- **Quién hace cada acción**: el registro anota quién genera, entrega (y cuándo) y anula cada aviso, y la nueva
+  sección **Actividad** (en Registro) lista todas las acciones con fecha y persona (`DATOS/actividad.csv`).
+- Nueva pestaña **Alumnado**: situación de cada alumno/a en cada módulo según el último informe procesado (faltas,
+  porcentaje, umbrales, aviso o pérdida, y quién supera el 7,5 % sin aviso vigente), con filtros.
+- **Importar correos del alumnado** desde un CSV o Excel (columnas reconocidas solas). Solo como dato: WebPEC no
+  envía nada.
+- **Exportar e importar todos los datos** en un ZIP (Configuración), con copia previa al importar. Sirve como copia
+  de seguridad o para llevar los datos a otro ordenador; admite datos de versiones anteriores.
+- Pestaña **Ayuda**: el manual de usuario en el navegador, con botón para imprimirlo o guardarlo en PDF. El paquete
+  incluye `MANUAL_USUARIO.pdf`.
+- Formato de datos 4 (se migra solo al arrancar, con copia previa).
+
 ## 3.00 — 2026-10-28
 
 - **Datos separados del programa**, en la carpeta `DATOS/`. Actualizar WebPEC es descomprimir la versión nueva

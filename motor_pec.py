@@ -14,6 +14,8 @@ Datos (en DATOS/, dentro de la carpeta del programa; se crean solos si no existe
   AVISOS_ANULADOS/<profesor>/    documentos anulados
   COPIAS_SEGURIDAD/              copias antes de vaciar el registro o la hoja y antes de migrar los datos
   VERSION_DATOS                  formato de los datos (lo pone al día migrar_datos al arrancar)
+  actividad.csv                  quién ha hecho cada acción y cuándo
+  correos_alumnado.csv           correos del alumnado importados (solo como dato)
 
 Reglas (valor de referencia: columna FI, faltas injustificadas):
   - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
@@ -35,7 +37,7 @@ import tempfile
 import unicodedata
 import zipfile
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from xml.sax.saxutils import escape
 
 PROGRAMA = Path(__file__).resolve().parent
@@ -65,10 +67,12 @@ COPIAS = "COPIAS_SEGURIDAD"
 DATOS = "DATOS"
 VERSION_DATOS = "VERSION_DATOS"
 LOG_MIGRACIONES = "migraciones.log"
+ACTIVIDAD = "actividad.csv"
+CORREOS = "correos_alumnado.csv"
 
 # Formato de los datos. 2: WebPEC 2.x (datos sueltos en la carpeta del programa);
-# 3: carpeta DATOS/ y registro con anulaciones.
-FORMATO_DATOS = 3
+# 3: carpeta DATOS/ y registro con anulaciones; 4: registro con quién genera, entrega y anula.
+FORMATO_DATOS = 4
 # Lo que en la 2.x estaba en la carpeta del programa y en la 3 va dentro de DATOS/
 DATOS_2X = [CONFIGURACION, HOJA_MODULOS, REGISTRO, NUEVOS, PROCESAR, PROCESADOS,
             PENDIENTES, REALIZADOS, COPIAS]
@@ -306,6 +310,11 @@ class HojaModulos:
     def borrar_modulo(self, fila):
         self._guardar(lambda libro: libro[PESTANA_MODULOS].delete_rows(fila))
 
+    def borrar_profesor(self, profesor_informe):
+        dato = self.profesores.get(normalizar(profesor_informe))
+        if dato:
+            self._guardar(lambda libro: libro[PESTANA_PROFESORES].delete_rows(dato[0]))
+
     def guardar_profesor(self, profesor_informe, firma):
         dato = self.profesores.get(normalizar(profesor_informe))
 
@@ -424,7 +433,8 @@ def glob_literal(nombre):
 # Las columnas solo se añaden al final: así un registro antiguo sigue siendo válido
 CAMPOS_REGISTRO = ["fecha_informe", "grupo", "modulo", "nombre_modulo", "profesor", "alumno",
                    "tipo", "faltas_injustificadas", "umbral", "documento", "fecha_proceso",
-                   "estado", "fecha_anulacion", "motivo_anulacion"]
+                   "estado", "fecha_anulacion", "motivo_anulacion",
+                   "generado_por", "fecha_entrega", "entregado_por", "anulado_por"]
 ANULADO = "anulado"
 
 
@@ -470,6 +480,80 @@ def buscar_en_registro(registro, grupo, siglas, alumno, tipo):
         if not anulada(fila) and fila["tipo"] == tipo and misma_clave(fila, grupo, siglas, alumno):
             return fila
     return None
+
+
+# ------------------------------------------------- correos del alumnado ---
+
+PATRON_CORREO = re.compile(r"^[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+$")
+
+
+def clave_alumno(nombre):
+    """Mismo alumno escrito «Apellidos, Nombre» o «Nombre Apellidos», con o sin tildes."""
+    return " ".join(sorted(normalizar(nombre).replace(",", " ").split()))
+
+
+def leer_tabla(nombre, datos):
+    """Filas (listas de textos) de un CSV o de la primera hoja de un Excel."""
+    if datos[:2] == b"PK" or nombre.lower().endswith((".xlsx", ".xlsm")):
+        try:
+            libro = load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
+        except Exception as e:
+            raise ErrorPEC(f"No se puede leer la hoja de cálculo ({e})")
+        return [["" if c is None else str(c).strip() for c in fila]
+                for fila in libro.worksheets[0].iter_rows(values_only=True)]
+    for codificacion in ("utf-8-sig", "cp1252"):
+        try:
+            texto = datos.decode(codificacion)
+            break
+        except UnicodeDecodeError:
+            continue
+    primera = next((l for l in texto.splitlines() if l.strip()), "")
+    separador = max(";,\t", key=primera.count)
+    return [[c.strip() for c in fila] for fila in csv.reader(io.StringIO(texto), delimiter=separador)]
+
+
+def extraer_correos(filas):
+    """[(grupo, alumno, correo)] de una tabla con cabecera; las columnas se reconocen solas."""
+    con_correo = [i for i, f in enumerate(filas) if any(PATRON_CORREO.match(c) for c in f)]
+    if not con_correo:
+        raise ErrorPEC("No se ha encontrado ninguna columna con correos electrónicos")
+    ancho = max(len(f) for f in filas)
+    filas = [f + [""] * (ancho - len(f)) for f in filas]
+    col_correo = max(range(ancho), key=lambda c: sum(bool(PATRON_CORREO.match(filas[i][c])) for i in con_correo))
+    cabecera = [normalizar(c) for c in filas[con_correo[0] - 1]] if con_correo[0] > 0 else [""] * ancho
+
+    def columna(*claves, excluir=()):
+        return next((i for i, c in enumerate(cabecera) if i != col_correo and i not in excluir
+                     and any(k in c for k in claves)), None)
+
+    col_grupo = columna("grupo", "unidad", "curso")
+    col_alumno = columna("alumn", "nombre completo", "apellidos y nombre", "apellidos, nombre")
+    col_apellidos = col_nombre = segundo = None
+    if col_alumno is None:
+        col_apellidos = columna("apellido")
+        col_nombre = columna("nombre", excluir=(col_apellidos,))
+        segundo = columna("apellido", excluir=(col_apellidos, col_nombre))
+    if col_alumno is None and (col_apellidos is None or col_nombre is None):
+        # Sin cabecera reconocible: la primera columna con texto que no sea el correo
+        col_alumno = next((c for c in range(ancho) if c != col_correo and c != col_grupo and
+                           any(re.search(r"[A-Za-zÀ-ÿ]", filas[i][c]) for i in con_correo)), None)
+        if col_alumno is None:
+            raise ErrorPEC("No se encuentra la columna con el nombre del alumnado")
+    resultado = []
+    for i in con_correo:
+        f = filas[i]
+        correo = f[col_correo].strip()
+        if not PATRON_CORREO.match(correo):
+            continue
+        if col_alumno is not None:
+            alumno = f[col_alumno]
+        else:
+            apellidos = " ".join(x for x in (f[col_apellidos], f[segundo] if segundo is not None else "") if x)
+            alumno = f"{apellidos}, {f[col_nombre]}"
+        alumno = re.sub(r"\s+", " ", alumno).strip(" ,")
+        if alumno:
+            resultado.append((f[col_grupo].strip() if col_grupo is not None else "", alumno, correo))
+    return resultado
 
 
 # ---------------------------------------------------- migración de datos ---
@@ -538,7 +622,15 @@ def migrar_2_a_3(datos, antigua):
     return hechos
 
 
-MIGRACIONES = {2: migrar_2_a_3}
+def migrar_3_a_4(datos, antigua):
+    """El registro gana las columnas de autoría y de entrega."""
+    if not (datos / REGISTRO).exists():
+        return []
+    escribir_registro(datos / REGISTRO, leer_registro(datos / REGISTRO))
+    return [f"{REGISTRO}: añadidas las columnas de quién genera, entrega y anula cada aviso"]
+
+
+MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4}
 
 
 def migrar_datos(datos, antigua=None):
@@ -799,6 +891,8 @@ class Motor:
         # Los datos de la 2.x solo se buscan junto al programa si se usa la carpeta DATOS/ normal
         antigua = PROGRAMA if self.base == PROGRAMA / DATOS else None
         self.migracion = migrar_datos(self.base, antigua)
+        self.usuario = ""  # quién hace la acción en curso (lo fija el servidor en cada petición)
+        self._informes_leidos = {}  # caché de informes procesados: nombre -> (fecha y tamaño, informe)
         self.preparar()
 
     def preparar(self):
@@ -1006,6 +1100,7 @@ class Motor:
                     "umbral": formato_umbral(modulo["umbral_75" if a["tipo"] == AVISO
                                                     else "umbral_15"]),
                     "fecha_proceso": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "generado_por": self.usuario,
                 })
             documentos, aviso = convertir_a_pdf(config["conversor_pdf"], docx_lista, pendientes)
         for fila, documento in zip(filas, documentos):
@@ -1087,6 +1182,57 @@ class Motor:
             raise ErrorPEC("Ese módulo ya no está en la hoja; recarga la página")
         hoja.borrar_modulo(int(fila))
 
+    # ---- profesorado (quién usa la aplicación)
+
+    def usuarios(self):
+        """Nombres (los de la firma) del profesorado conocido, para elegir quién usa WebPEC."""
+        return sorted({p[2] for p in self.hoja().profesores.values()}, key=normalizar)
+
+    def nuevo_profesor(self, nombre, apellidos):
+        """
+        Da de alta a un profesor/a que aún no tiene informes. Se guarda como lo escribe Raíces
+        («Apellidos, Nombre»; las tildes no cuentan), así su primer informe ya lo reconoce.
+        """
+        nombre = re.sub(r"\s+", " ", nombre or "").strip()
+        apellidos = re.sub(r"\s+", " ", apellidos or "").strip()
+        if not nombre or not apellidos:
+            raise ErrorPEC("Escribe el nombre y los apellidos")
+        hoja = self.hoja()
+        en_informe = f"{apellidos}, {nombre}"
+        ya = hoja.firma(en_informe)
+        if ya:
+            return {"firma": ya, "nuevo": False}
+        firma = f"{nombre} {apellidos}"
+        hoja.guardar_profesor(en_informe, firma)
+        return {"firma": firma, "nuevo": True}
+
+    def borrar_profesor(self, profesor):
+        hoja = self.hoja()
+        if hoja.firma(profesor) is None:
+            raise ErrorPEC("Ese profesor/a ya no está en la hoja; recarga la página")
+        hoja.borrar_profesor(profesor)
+
+    def anotar_actividad(self, accion, detalle=""):
+        ruta = self.base / ACTIVIDAD
+        nuevo = not ruta.exists()
+        try:
+            with open(ruta, "a", encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f, delimiter=";")
+                if nuevo:
+                    w.writerow(["fecha", "usuario", "accion", "detalle"])
+                w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), self.usuario or "(sin indicar)",
+                            accion, re.sub(r"\s+", " ", str(detalle)).strip()])
+        except PermissionError:
+            pass  # si está abierto en Excel no se pierde la acción, solo su anotación
+
+    def actividad(self, limite=500):
+        ruta = self.base / ACTIVIDAD
+        if not ruta.exists():
+            return []
+        with open(ruta, encoding="utf-8-sig", newline="") as f:
+            filas = list(csv.DictReader(f, delimiter=";"))
+        return filas[::-1][:limite]
+
     # ---- documentos generados
 
     def documentos(self, carpeta):
@@ -1113,6 +1259,9 @@ class Motor:
                 "pdf": ruta.suffix.lower() == ".pdf",
                 "fecha_anulacion": fila.get("fecha_anulacion", ""),
                 "motivo_anulacion": fila.get("motivo_anulacion", ""),
+                "anulado_por": fila.get("anulado_por", ""),
+                "fecha_entrega": fila.get("fecha_entrega", ""),
+                "entregado_por": fila.get("entregado_por", ""),
             })
         lista.sort(key=lambda d: (d["orden"], d["profesor"], d["archivo"]), reverse=True)
         return lista
@@ -1153,15 +1302,25 @@ class Motor:
         """Entre pendientes y entregados. accion: 'realizados' o 'pendientes'."""
         if accion not in ("realizados", "pendientes") or carpeta == "anulados":
             raise ErrorPEC("Acción no válida")
-        hechos = 0
+        movidos = []
         for relativa in rutas:
             ruta = self.ruta_documento(carpeta, relativa)
             if accion != carpeta:
                 destino = self._carpeta_documentos(accion) / ruta.parent.name
                 destino.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(ruta), str(destino / ruta.name))
-            hechos += 1
-        return hechos
+                movidos.append(ruta.name)
+        # La entrega queda anotada en el registro (y se borra si vuelve a pendientes)
+        if movidos:
+            entrega = {"fecha_entrega": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                       "entregado_por": self.usuario} if accion == "realizados" else \
+                {"fecha_entrega": "", "entregado_por": ""}
+            registro = leer_registro(self.base / REGISTRO)
+            for fila in registro:
+                if fila["documento"] in movidos and not anulada(fila):
+                    fila.update(entrega)
+            escribir_registro(self.base / REGISTRO, registro)
+        return len(movidos)
 
     def contar_documentos(self):
         return {clave: sum(1 for p in (self.base / carpeta).glob("*/*") if p.is_file())
@@ -1215,7 +1374,8 @@ class Motor:
                                    f"pérdida del 15 %: anúlala antes, o las dos a la vez")
         ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
         for fila in filas:
-            fila.update(estado=ANULADO, fecha_anulacion=ahora, motivo_anulacion=motivo)
+            fila.update(estado=ANULADO, fecha_anulacion=ahora, motivo_anulacion=motivo,
+                        anulado_por=self.usuario)
         escribir_registro(self.base / REGISTRO, registro)
 
         movidos = 0
@@ -1231,6 +1391,168 @@ class Motor:
                     shutil.move(str(ruta), str(destino))
                     movidos += 1
         return {"anulados": len(filas), "documentos": movidos}
+
+    # ---- situación del alumnado
+
+    def _informe_procesado(self, ruta):
+        """Lee un informe procesado (con caché: leer PDF es lento)."""
+        estado = ruta.stat()
+        clave = (estado.st_mtime, estado.st_size)
+        guardado = self._informes_leidos.get(ruta.name)
+        if guardado and guardado[0] == clave:
+            return guardado[1]
+        try:
+            informe = leer_informe(ruta)
+        except ErrorInforme:
+            informe = None
+        self._informes_leidos[ruta.name] = (clave, informe)
+        return informe
+
+    def situacion_alumnado(self):
+        """
+        Cada alumno de cada módulo según el último informe procesado que se conserva:
+        faltas, porcentaje y avisos vigentes.
+        """
+        hoja = self.hoja()
+        registro = leer_registro(self.base / REGISTRO)
+        correos = self._correos()
+        ultimos = {}
+        for ruta in self._pdfs(PROCESADOS):
+            informe = self._informe_procesado(ruta)
+            if informe is None:
+                continue
+            clave = (normalizar(informe["unidad"]), normalizar(informe["modulo"]))
+            if clave not in ultimos or (informe["fecha"], ruta.name) > (ultimos[clave][0]["fecha"], ultimos[clave][1]):
+                ultimos[clave] = (informe, ruta.name)
+        alumnos, sin_modulo = [], []
+        for informe, archivo in ultimos.values():
+            modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
+            if modulo is None:
+                sin_modulo.append(archivo)
+                continue
+            grupo, siglas = informe["unidad"], modulo["siglas"]
+            for a in informe["alumnos"]:
+                aviso = buscar_en_registro(registro, grupo, siglas, a["alumno"], AVISO)
+                perdida = buscar_en_registro(registro, grupo, siglas, a["alumno"], PEC)
+                estado = "perdida" if perdida else "aviso" if aviso else \
+                    "supera" if a["fi"] >= modulo["umbral_75"] else "sin_avisos"
+                clave = clave_alumno(a["alumno"])
+                alumnos.append({
+                    "alumno": a["alumno"], "grupo": grupo, "siglas": siglas, "modulo": modulo["nombre"],
+                    "profesor": hoja.firma(informe["profesor"]) or informe["profesor"],
+                    "fi": a["fi"], "horas": formato_umbral(modulo["horas"]),
+                    "porcentaje": formato_umbral(round(a["fi"] * 100 / modulo["horas"], 1)),
+                    "umbral_75": formato_umbral(modulo["umbral_75"]),
+                    "umbral_15": formato_umbral(modulo["umbral_15"]),
+                    "supera_15": a["fi"] >= modulo["umbral_15"],
+                    "estado": estado, "informe": informe["fecha"].strftime("%d/%m/%Y"),
+                    "fecha_aviso": fecha_legible(aviso["fecha_informe"]) if aviso else "",
+                    "fecha_perdida": fecha_legible(perdida["fecha_informe"]) if perdida else "",
+                    "correo": correos.get((normalizar(grupo), clave)) or correos.get(("", clave), ""),
+                })
+        alumnos.sort(key=lambda x: (x["grupo"], normalizar(x["alumno"]), x["siglas"]))
+        return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo}
+
+    # ---- correos del alumnado (solo el dato: WebPEC no envía nada)
+
+    def _leer_correos(self):
+        ruta = self.base / CORREOS
+        if not ruta.exists():
+            return []
+        with open(ruta, encoding="utf-8-sig", newline="") as f:
+            return list(csv.DictReader(f, delimiter=";"))
+
+    def _correos(self):
+        return {(normalizar(f["grupo"]), clave_alumno(f["alumno"])): f["correo"] for f in self._leer_correos()}
+
+    def importar_correos(self, nombre, datos, grupo=""):
+        """Añade o actualiza correos desde un CSV o Excel (alumno y correo; grupo opcional)."""
+        nuevos = extraer_correos(leer_tabla(nombre, datos))
+        actuales = {(normalizar(f["grupo"]), clave_alumno(f["alumno"])): f for f in self._leer_correos()}
+        resultado = {"leidos": len(nuevos), "nuevos": 0, "actualizados": 0}
+        for g, alumno, correo in nuevos:
+            g = g or (grupo or "").strip()
+            clave = (normalizar(g), clave_alumno(alumno))
+            if clave in actuales:
+                if actuales[clave]["correo"] != correo:
+                    actuales[clave]["correo"] = correo
+                    resultado["actualizados"] += 1
+            else:
+                actuales[clave] = {"grupo": g, "alumno": alumno, "correo": correo}
+                resultado["nuevos"] += 1
+        try:
+            with open(self.base / CORREOS, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=["grupo", "alumno", "correo"], delimiter=";")
+                w.writeheader()
+                w.writerows(sorted(actuales.values(), key=lambda f: (f["grupo"], normalizar(f["alumno"]))))
+        except PermissionError:
+            raise ErrorPEC(f"No se puede escribir en {CORREOS}: ciérralo en Excel y vuelve a intentarlo")
+        return resultado
+
+    # ---- exportar e importar todos los datos
+
+    def exportar_datos(self):
+        """ZIP con todo DATOS/ (salvo las copias de seguridad)."""
+        salida = io.BytesIO()
+        with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED) as z:
+            for fichero in sorted(self.base.rglob("*")):
+                relativa = fichero.relative_to(self.base)
+                if fichero.is_file() and relativa.parts[0] != COPIAS and fichero.suffix != ".tmp":
+                    z.write(fichero, relativa.as_posix())
+        return salida.getvalue()
+
+    def importar_datos(self, datos):
+        """
+        Sustituye los datos por los de un ZIP exportado (de este u otro ordenador, también de una
+        versión anterior). Antes se guarda un ZIP con los datos actuales en COPIAS_SEGURIDAD/.
+        """
+        try:
+            z = zipfile.ZipFile(io.BytesIO(datos))
+        except zipfile.BadZipFile:
+            raise ErrorPEC("El fichero no es un ZIP válido")
+        with z:
+            nombres = [n for n in z.namelist() if not n.endswith("/")]
+            marcas = (VERSION_DATOS, REGISTRO, HOJA_MODULOS)
+            # Los datos pueden venir en la raíz del ZIP o dentro de una carpeta (p. ej. DATOS/)
+            prefijos = {n[:-len(m)] for n in nombres for m in marcas
+                        if n == m or n.endswith("/" + m) and n.count("/") == 1}
+            if len(prefijos) != 1:
+                raise ErrorPEC("El ZIP no contiene datos de WebPEC (registro de avisos, hoja de módulos…)")
+            prefijo = prefijos.pop()
+            if prefijo + VERSION_DATOS in nombres:
+                try:
+                    formato = int(z.read(prefijo + VERSION_DATOS).decode().strip())
+                except ValueError:
+                    formato = FORMATO_DATOS
+                if formato > FORMATO_DATOS:
+                    raise ErrorPEC("Los datos son de una versión de WebPEC más moderna que esta: "
+                                   "instala antes la última versión")
+            copia = self.base / COPIAS / f"{datetime.now():%Y%m%d_%H%M%S}_antes_de_importar_datos.zip"
+            copia.parent.mkdir(exist_ok=True)
+            copia.write_bytes(self.exportar_datos())
+            try:
+                for hijo in list(self.base.iterdir()):
+                    if hijo.name != COPIAS:
+                        shutil.rmtree(hijo) if hijo.is_dir() else hijo.unlink()
+                copiados = 0
+                for nombre in nombres:
+                    if not nombre.startswith(prefijo):
+                        continue
+                    partes = PurePosixPath(nombre[len(prefijo):]).parts
+                    if not partes or partes[0] == COPIAS or ".." in partes or partes[0].startswith("/"):
+                        continue
+                    destino = self.base.joinpath(*partes)
+                    destino.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(nombre) as origen, open(destino, "wb") as salida:
+                        shutil.copyfileobj(origen, salida)
+                    copiados += 1
+            except PermissionError as e:
+                raise ErrorPEC(f"No se han podido sustituir los datos: {e.filename} está abierto. Ciérralo y "
+                               f"vuelve a importar; los datos anteriores están en {COPIAS}/{copia.name}")
+        migracion = migrar_datos(self.base)  # por si el ZIP es de un formato anterior
+        self._informes_leidos.clear()
+        self.preparar()
+        return {"ficheros": copiados, "copia": f"{COPIAS}/{copia.name}", "migracion": migracion}
 
     # ---- borrados completos de datos (con copia de seguridad)
 

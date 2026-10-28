@@ -21,14 +21,19 @@
       <div>
         <h1>Web<span>PEC</span> <small class="version" id="version"></small></h1>
         <p id="subtitulo">Avisos de pérdida de evaluación continua</p>
+        <button class="usuario-actual" id="boton-usuario" title="Quién está usando WebPEC (clic para cambiar)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span id="nombre-usuario">¿Quién eres?</span></button>
       </div>
     </div>
     <nav class="pestanas" role="tablist">
       <button class="pestana activa" data-vista="informes">Informes</button>
       <button class="pestana" data-vista="avisos">Avisos <span class="contador" id="contador-avisos"></span></button>
+      <button class="pestana" data-vista="alumnado">Alumnado</button>
       <button class="pestana" data-vista="registro">Registro</button>
       <button class="pestana" data-vista="modulos">Módulos</button>
       <button class="pestana" data-vista="config">Configuración</button>
+      <a class="pestana" href="/ayuda" target="_blank" title="Manual de usuario (se abre en otra pestaña)">Ayuda</a>
       <button class="pestana apagar" id="boton-cerrar" title="Cerrar WebPEC" aria-label="Cerrar WebPEC">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
@@ -117,6 +122,38 @@
       </div>
     </section>
 
+    <!-- ======================================================= ALUMNADO -->
+    <section class="vista" id="vista-alumnado">
+      <div class="titulo-seccion">
+        <h2>Situación del alumnado</h2>
+        <div class="filtros">
+          <select id="filtro-al-grupo"><option value="">Todos los grupos</option></select>
+          <select id="filtro-al-modulo"><option value="">Todos los módulos</option></select>
+          <select id="filtro-al-profesor"><option value="">Todos los profesores</option></select>
+          <select id="filtro-al-estado">
+            <option value="">Todas las situaciones</option>
+            <option value="sin_avisos">Sin avisos</option>
+            <option value="supera">Supera el 7,5 % sin aviso</option>
+            <option value="aviso">Aviso del 7,5 %</option>
+            <option value="perdida">Pérdida del 15 %</option>
+          </select>
+          <input type="search" id="filtro-al-texto" placeholder="Buscar alumno/a…">
+          <button class="boton suave" id="boton-importar-correos">Importar correos…</button>
+          <input type="file" id="selector-correos" accept=".csv,.xlsx,.txt" hidden>
+        </div>
+      </div>
+      <p class="nota" id="nota-alumnado">Cada alumno/a de cada módulo según el último informe procesado que se conserva.</p>
+      <div class="tarjeta sin-relleno">
+        <table class="tabla" id="tabla-alumnado">
+          <thead>
+            <tr><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num">FI</th><th class="num">% horas</th>
+              <th class="num">7,5 %</th><th class="num">15 %</th><th>Situación</th><th>Informe</th><th>Profesor/a</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ======================================================= REGISTRO -->
     <section class="vista" id="vista-registro">
       <div class="titulo-seccion">
@@ -137,6 +174,13 @@
           <tbody></tbody>
         </table>
       </div>
+      <details class="tarjeta plegable" id="plegable-actividad">
+        <summary>Actividad: quién ha hecho qué</summary>
+        <table class="tabla" id="tabla-actividad">
+          <thead><tr><th>Fecha</th><th>Profesor/a</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
     </section>
 
     <!-- ======================================================== MÓDULOS -->
@@ -157,8 +201,10 @@
         </table>
       </div>
 
-      <div class="titulo-seccion"><h2>Profesorado</h2></div>
-      <p class="nota">Raíces escribe los nombres sin tildes: aquí se indica cómo deben aparecer en la firma.</p>
+      <div class="titulo-seccion"><h2>Profesorado</h2>
+        <button class="boton suave" id="boton-nuevo-profesor">Añadir profesor/a…</button></div>
+      <p class="nota">Raíces escribe los nombres sin tildes: aquí se indica cómo deben aparecer en la firma.
+        Un profesor/a nuevo puede añadirse antes de que llegue su primer informe.</p>
       <div class="tarjeta sin-relleno">
         <table class="tabla" id="tabla-profesores">
           <thead><tr><th>En el informe</th><th>Nombre para la firma</th><th></th></tr></thead>
@@ -211,6 +257,16 @@
         <p class="nota" id="carpeta-datos"></p>
         <div class="pie-formulario"><button class="boton principal" type="submit">Guardar configuración</button></div>
       </form>
+      <div class="tarjeta formulario">
+        <h2>Copia de los datos</h2>
+        <p class="nota">Todos los datos (registro, módulos, profesorado, informes, avisos, correos y actividad) en un
+          solo ZIP: para guardar una copia o para llevarlos a otro ordenador.</p>
+        <div class="botonera izquierda">
+          <button class="boton principal" id="boton-exportar">Exportar datos (ZIP)</button>
+          <button class="boton peligro-suave" id="boton-importar">Importar datos…</button>
+          <input type="file" id="selector-datos" accept=".zip" hidden>
+        </div>
+      </div>
     </section>
   </main>
 

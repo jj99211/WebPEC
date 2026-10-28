@@ -10,19 +10,21 @@ INSTALACIÓN
 -----------
 1. El ordenador necesita Python 3.9 o posterior (https://www.python.org; al instalarlo,
    marcar "Add Python to PATH"). No hay que instalar nada más: las librerías van en lib\.
-2. Descomprimir el ZIP y dejar la carpeta WebPEC donde se quiera (por ejemplo, en Documentos).
+2. Descomprimir el ZIP en cualquier sitio (p. ej. Descargas; en Windows, "Extraer todo").
 3. Doble clic en el instalador:
      Windows:  Instalar_WebPEC.bat
      Linux:    Instalar_WebPEC.sh  (si el explorador pregunta, elegir "Ejecutar")
-   El instalador comprueba Python, crea el icono «WebPEC» con el escudo del instituto en el
-   escritorio (en Linux, también en el menú de aplicaciones), prepara los datos y arranca.
-   Se puede repetir sin riesgo: por ejemplo, si se mueve la carpeta, para rehacer el icono.
+   El instalador pregunta dónde instalar (con Intro, la opción recomendada):
+     - si ya hay un WebPEC en el ordenador (lo reconoce por el icono): actualizarlo, con sus datos;
+     - si no: Documentos\WebPEC; también se puede dejarlo donde está o escribir otra carpeta.
+   Copia el programa (nunca los datos), crea el icono «WebPEC» con el escudo del instituto en el
+   escritorio (en Linux, también en el menú de aplicaciones) y arranca. Después, la carpeta
+   descomprimida ya no hace falta. Se puede repetir sin riesgo (p. ej. si se mueve la carpeta).
 
-ACTUALIZAR A UNA VERSIÓN NUEVA: cerrar WebPEC y descomprimir el ZIP nuevo encima de la carpeta
-actual, sustituyendo los ficheros. Los datos están en DATOS\ y no se tocan. Si vienen de una
-versión anterior, WebPEC los pone al día solo al arrancar, después de guardar una copia de
-seguridad en DATOS\COPIAS_SEGURIDAD\ (también los datos de la 2.x, que estaban sueltos en la
-carpeta del programa).
+ACTUALIZAR A UNA VERSIÓN NUEVA: igual que instalar (descomprimir y doble clic en el instalador,
+opción "Actualizar"). Si los datos vienen de una versión anterior, WebPEC los pone al día solo al
+arrancar, después de guardar una copia de seguridad en DATOS\COPIAS_SEGURIDAD\ (también los de
+la 2.x, que estaban sueltos en la carpeta del programa).
 
 ARRANCAR (después de instalar): doble clic en el icono «WebPEC» del escritorio, o en
 WebPEC.bat (Windows) / WebPEC.sh (Linux). Se abre una ventana de terminal y, enseguida, el
@@ -51,12 +53,21 @@ Avisos        Avisos pendientes de entregar, entregados y anulados, de todo el d
               y su documento pasa a "Anulados"; el siguiente informe puede volver a generarlos.
               "Borrar avisos…" borra de una vez los documentos pendientes, entregados o todos
               (para limpiar al terminar el curso; el registro los conserva).
-Registro      Todos los avisos emitidos. Un aviso nunca se repite, salvo que se anule. También se
+Alumnado      Situación de cada alumno/a en cada módulo según el último informe procesado (faltas,
+              porcentaje, avisos), con filtros. "Importar correos…" guarda sus correos desde un
+              CSV o Excel (solo como dato: WebPEC no envía nada).
+Registro      Todos los avisos emitidos, con quién los generó, entregó o anuló, y la actividad
+              (quién ha hecho qué). Un aviso nunca se repite, salvo que se anule. También se
               puede anular desde aquí. "Vaciar registro" lo deja en blanco (p. ej. al empezar curso).
 Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
               "Borrar todos los módulos y profesores" deja la hoja limpia.
 Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
               (AAAAMMDD o DDMMAAAA), conversor a PDF, puerto y acceso desde la red.
+              Exportar e importar todos los datos en un ZIP.
+Ayuda         Este manual de uso (MANUAL_USUARIO.pdf), en otra pestaña del navegador.
+
+¿QUIÉN ERES? Al abrir WebPEC cada profesor/a elige su nombre (queda anotado en lo que haga). Quien
+aún no tiene informes procesados elige "Soy nuevo/a" y escribe nombre y apellidos como en Raíces.
 
 
 REGLAS
@@ -81,12 +92,14 @@ registro_avisos.csv          registro de avisos emitidos (no borrar filas)
 configuracion.ini            configuración (también editable desde la aplicación)
 COPIAS_SEGURIDAD\            copias antes de vaciar el registro o la hoja y antes de
                              poner al día los datos de una versión anterior
+correos_alumnado.csv         correos del alumnado importados
+actividad.csv                quién ha hecho cada acción y cuándo
 VERSION_DATOS, migraciones.log  formato de los datos e historial de sus actualizaciones
 
 Fuera de DATOS\ solo está el programa: plantillas\ (plantillas .docx de los dos documentos),
 web\, lib\, VERSION y CAMBIOS.md (versión instalada e historial), MANUAL_USUARIO.md.
 
-Para hacer copia de seguridad basta con copiar la carpeta DATOS entera.
+Para hacer copia de seguridad: "Exportar datos" en Configuración, o copiar la carpeta DATOS.
 
 
 LICENCIA
