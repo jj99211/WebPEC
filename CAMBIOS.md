@@ -8,6 +8,11 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.12 — 2026-10-28
+
+- Avisos: la barra de selección (Imprimir, Descargar ZIP, Enviar por correo, Entregados, Anular…) se ve en una sola
+  línea cuando cabe; antes se partía en tres y los botones se montaban unos sobre otros.
+
 ## 3.11 — 2026-10-28
 
 - **Enviar por correo** (botón en cada aviso y en la barra de selección): Thunderbird abre un correo por aviso con
