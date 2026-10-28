@@ -1032,9 +1032,10 @@ $("#boton-cerrar").addEventListener("click", async () => {
     <div class="mancha m2"></div><div class="marca-agua">WebPEC</div></div>
     <div class="cerrado"><img src="${escudoCerrado}" alt="">
     <h1>WebPEC se ha cerrado</h1><p>Ya puedes cerrar esta pestaña.</p>
-    <p class="licencia-cierre">WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid)<br>
-      Se puede usar, copiar y modificar libremente citando al autor, sin fines comerciales y compartiendo con la misma licencia:<br>
-      <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" rel="license noopener">
+    <p class="licencia-cierre">WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid)</p>
+    <p class="licencia-cierre">Se puede usar, copiar y modificar libremente citando al autor, sin fines comerciales y
+      compartiendo con la misma licencia:</p>
+    <p class="licencia-cierre"><a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" rel="license noopener">
         <span class="cc">CC BY-NC-SA 4.0</span> Reconocimiento-NoComercial-CompartirIgual 4.0 Internacional</a></p></div>`;
 });
 

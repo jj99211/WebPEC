@@ -138,7 +138,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px clamp(16px, 4vw, 48px) 1
 
 .barra-procesar, .barra-seleccion {
   /* Centrada con márgenes automáticos (no con left: 50%, que le deja solo media pantalla y parte los botones) */
-  position: fixed; left: 0; right: 0; bottom: 66px; margin: 0 auto; z-index: 20;
+  position: fixed; left: 0; right: 0; bottom: 84px; margin: 0 auto; z-index: 20;
   width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box;
   display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap; justify-content: center;
   padding: 10px 12px 10px 22px; border-radius: 28px;
@@ -242,11 +242,14 @@ input:focus, select:focus { outline: none; border-color: var(--principal); box-s
 
 .pie {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  text-align: center; color: var(--suave); font-size: 12.5px; line-height: 1.5;
-  padding: 8px 16px 10px;
-  background: linear-gradient(to top, rgba(245, 247, 251, .95) 40%, rgba(245, 247, 251, 0));
+  text-align: center; color: var(--suave); font-size: 12.5px; line-height: 1.6;
+  padding: 9px 16px 11px;
+  /* Fondo opaco con línea superior: el listado pasa por detrás sin mezclarse con el texto */
+  background: rgba(245, 247, 251, .97); border-top: 1px solid var(--linea);
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, .05);
 }
 .pie p { margin: 0; }
+.pie p + p { margin-top: 4px; }
 .pie a { color: var(--principal); font-weight: 600; text-decoration: none; }
 .pie a:hover { text-decoration: underline; }
 
@@ -262,7 +265,7 @@ input:focus, select:focus { outline: none; border-color: var(--principal); box-s
 
 @media (max-width: 720px) {
   .cabecera { position: static; }
-  .barra-procesar, .barra-seleccion { border-radius: 18px; bottom: 76px; padding: 10px 12px; }
+  .barra-procesar, .barra-seleccion { border-radius: 18px; bottom: 92px; padding: 10px 12px; }
   .pie { font-size: 11.5px; }
   .filtros input[type=search] { min-width: 0; flex: 1; }
 }
@@ -314,9 +317,11 @@ label input, label select { font-weight: 400; color: var(--texto); }
 
 /* Licencia */
 .pie a.licencia { text-decoration: none; }
-.cc { display: inline-block; padding: 0 8px; border: 1.5px solid currentColor; border-radius: 999px;
+.cc { display: inline-block; padding: 1px 8px; line-height: 1.5; border: 1.5px solid currentColor; border-radius: 999px;
   font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
-.cerrado .licencia-cierre { margin-top: 22px; font-size: 13px; line-height: 1.6; }
+.cerrado .licencia-cierre { margin-top: 26px; font-size: 13px; line-height: 1.6; max-width: 640px; }
+.cerrado .licencia-cierre + .licencia-cierre { margin-top: 10px; }
+.cerrado .licencia-cierre .cc { margin-right: 6px; }
 .cerrado .licencia-cierre a { color: var(--principal); font-weight: 600; text-decoration: none; }
 
 /* ------------------------------------------------------------ v3.10 --- */

@@ -8,6 +8,13 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.22 — 2026-10-28
+
+- El pie con el contacto y la licencia tiene fondo propio y una línea encima: los listados ya no se mezclan con su
+  texto al desplazarse. Las dos líneas del pie están algo más separadas.
+- Pantalla de cierre: la atribución y la licencia CC van en líneas separadas y con más espacio.
+- La barra de selección de Avisos sube un poco para no tocar el pie.
+
 ## 3.21 — 2026-10-28
 
 - **Bajas por módulo**: al dar de baja se eligen los módulos (el de la fila viene marcado) o «Todos sus módulos del
