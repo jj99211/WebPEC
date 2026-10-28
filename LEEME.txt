@@ -49,6 +49,9 @@ Avisos        Avisos pendientes de entregar, entregados y anulados, de todo el d
               con filtros por profesor, tipo y texto. Se marcan los que se quieran y se pueden
               imprimir (todos en un solo PDF), descargar en ZIP, pasar a "Entregados" o anular.
               Después de imprimir o descargar, pregunta si ya están entregados.
+              ENVIAR POR CORREO: Thunderbird abre un correo por aviso con la dirección del alumno/a
+              (si se importó), el texto y el PDF adjunto; se revisa y se envía. Sin Thunderbird,
+              se descarga un borrador .eml (Configuración). WebPEC no envía nada por sí mismo.
               ANULAR (con motivo): para avisos emitidos por error. Quedan tachados en el registro
               y su documento pasa a "Anulados"; el siguiente informe puede volver a generarlos.
               "Borrar avisos…" borra de una vez los documentos pendientes, entregados o todos
@@ -62,7 +65,7 @@ Registro      Todos los avisos emitidos, con quién los generó, entregó o anul
 Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
               "Borrar todos los módulos y profesores" deja la hoja limpia.
 Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
-              (AAAAMMDD o DDMMAAAA), conversor a PDF, puerto y acceso desde la red.
+              (AAAAMMDD o DDMMAAAA), conversor a PDF, programa de correo, puerto y acceso desde la red.
               Exportar e importar todos los datos en un ZIP.
 Ayuda         Este manual de uso (MANUAL_USUARIO.pdf), en otra pestaña del navegador.
 

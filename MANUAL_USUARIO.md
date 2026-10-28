@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.10*
+Manual de la versión 3.11*
 
 ---
 
@@ -46,6 +46,10 @@ instituto en el escritorio (en Linux, también en el menú de aplicaciones) y ar
 abierto, pide cerrarlo antes. Después, la carpeta descomprimida ya no hace falta y se puede borrar. Se puede
 repetir sin riesgo, por ejemplo para rehacer el icono si se mueve la carpeta.
 
+Para **actualizar a una versión nueva** se hace lo mismo: descomprimir el ZIP nuevo en cualquier sitio y ejecutar
+su instalador; con Intro elige «Actualizar la instalación que ya hay». Si WebPEC está abierto, el instalador pide
+cerrarlo (botón de apagado) antes de copiar nada.
+
 **Arrancar** (cada día): doble clic en el icono «WebPEC» del escritorio (o en `WebPEC.bat` / `WebPEC.sh`).
 
 Se abre una ventana de terminal y el navegador con la aplicación (`http://localhost:8765`). **La ventana de
@@ -78,9 +82,11 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
    (`FECHA_GRUPO_MÓDULO_Faltas.pdf`).
 4. Pulsar **Procesar informes**. Si es la primera vez que aparece un módulo o un profesor/a, WebPEC pide los datos
    que le faltan (horas totales y siglas del módulo, nombre del profesor/a tal y como debe ir en la firma) y
-   después continúa sola.
-5. Ir a **Avisos → Pendientes de entregar**, marcar los avisos e **Imprimir** (salen todos juntos en un PDF) o
-   **Descargar ZIP**.
+   después continúa sola. Si el nombre del profesor/a del informe se parece al de alguien que ya está en la lista
+   (por ejemplo, dado de alta sin su segundo nombre), WebPEC pregunta si es la misma persona: al confirmarlo, se
+   guarda con el nombre que trae Raíces y conserva su firma.
+5. Ir a **Avisos → Pendientes de entregar**, marcar los avisos e **Imprimir** (salen todos juntos en un PDF),
+   **Descargar ZIP** o **Enviar por correo**.
 6. Entregar los documentos al alumnado y, cuando estén entregados, pasarlos a **Entregados** confirmando la
    entrega.
 
@@ -106,11 +112,21 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
   - **Imprimir:** une los avisos marcados en un solo PDF y abre la impresión.
   - **Descargar ZIP:** descarga los documentos marcados.
   - **Marcar como entregados** (en la bandeja de entregados, **Volver a pendientes**).
+  - **Enviar por correo:** prepara un correo por aviso (ver más abajo).
   - **Anular…:** para avisos emitidos por error (ver más abajo).
+- **Correo** (en cada fila): prepara el correo de ese aviso.
 - **Entregado** (en cada fila): pasa ese aviso a la bandeja de entregados.
 - Al pasar avisos a Entregados, WebPEC pide marcar «Confirmo que se han entregado».
 - **Borrar avisos…:** borra de una vez los documentos pendientes, los entregados o todos. Está pensado para
   limpiar al terminar el curso: el Registro los conserva y no se vuelven a generar.
+
+**Enviar por correo.** WebPEC abre **Thunderbird** con un correo por aviso ya preparado: la dirección del
+alumno/a (si se importó en la pestaña Alumnado; si no, queda vacía para escribirla), el asunto, un texto que explica
+el documento y pide confirmar la recepción, y el **PDF adjunto**. Solo hay que revisarlo y pulsar **Enviar**:
+WebPEC no envía nada por sí mismo. Después, pasar el aviso a Entregados. Si no se usa Thunderbird, en
+Configuración se puede elegir «Fichero .eml»: se descarga un borrador por aviso que se abre con el programa de correo.
+Para que Thunderbird pueda leer los adjuntos, WebPEC deja una copia en la carpeta personal, en `WebPEC_correo`
+(se vacía sola de lo que tenga más de dos días).
 
 **Anular un aviso.** Si un aviso se emitió por error (horas del módulo mal puestas, faltas que después se
 justificaron…), se marca y se pulsa **Anular…**. WebPEC pide el **motivo** (obligatorio) y entonces:
@@ -167,7 +183,8 @@ seguridad.
 
 - **Centro:** nombre del centro, localidad, Jefatura de Estudios y Dirección (aparecen en los documentos).
 - **Documentos:** formato de la fecha en los nombres de fichero (AAAAMMDD, que ordena por fecha, o DDMMAAAA) y
-  programa para pasar a PDF (automático, LibreOffice, Word o ninguno).
+  programa para pasar a PDF (automático, LibreOffice, Word o ninguno) y programa para **enviar por correo**
+  (automático, Thunderbird o fichero .eml).
 - **Aplicación:** puerto y acceso desde otros ordenadores de la red del centro (se aplican al volver a arrancar).
 - **Guardar configuración** para aplicar los cambios.
 - **Copia de los datos:**
@@ -226,6 +243,7 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | No aparezco en la lista de «¿Quién eres?» | Elegir «Soy nuevo/a» y escribir nombre y apellidos como en Raíces. |
 | Al arrancar dice que no puede actualizar los datos | Hay un fichero de datos abierto (Excel, LibreOffice): cerrarlo y volver a arrancar. |
 | Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. |
+| «Enviar por correo» no abre Thunderbird, o el correo sale sin adjunto | En Configuración, elegir «Fichero .eml» para enviar por correo. |
 
 ## 8. Contacto
 

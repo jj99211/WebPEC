@@ -231,13 +231,24 @@ function pintarResultado(r) {
       if (i.falta_firma) profesores.set(i.falta_firma.profesor, i.falta_firma);
       if (i.falta_modulo) modulos.set(`${i.falta_modulo.unidad}|${i.falta_modulo.en_informe}`, i.falta_modulo);
     }
-    const formularios = [...profesores.values()].map(f => `
+    const formularios = [...profesores.values()].map(f => {
+      // Puede ser alguien dado de alta a mano con el nombre algo distinto: se propone el más parecido
+      const candidatos = (f.candidatos || []).filter(c => c.parecido > 0);
+      const sugerido = candidatos.find(c => c.parecido >= 0.5);
+      return `
       <form class="formulario-dato" data-profesor="${esc(f.profesor)}">
-        <p><b>Profesor/a nuevo.</b> Raíces escribe «${esc(f.profesor)}». ¿Cómo debe aparecer en la firma?</p>
+        <p><b>Profesor/a que no está en la lista.</b> Raíces escribe «${esc(f.profesor)}».</p>
+        ${candidatos.length ? `<label class="ancho">¿Es alguien que ya está en la lista con el nombre escrito de otra forma?
+          <select name="existente">
+            <option value="">No: es otra persona</option>
+            ${candidatos.map(c => `<option value="${esc(c.en_informe)}" ${c === sugerido ? "selected" : ""}>Sí: ${esc(c.firma)}</option>`).join("")}
+          </select></label>
+          <p class="nota">Si es la misma persona, se guarda con el nombre que trae el informe y su firma no cambia.</p>` : ""}
         <div class="fila">
-          <label class="ancho">Nombre para la firma, con tildes<input name="firma" value="${esc(f.propuesta)}" required></label>
+          <label class="ancho campo-firma ${sugerido ? "oculto" : ""}">Nombre para la firma, con tildes<input name="firma" value="${esc(f.propuesta)}"></label>
           <button class="boton principal">Guardar y continuar</button>
-        </div></form>`).concat([...modulos.values()].map(m => `
+        </div></form>`;
+    }).concat([...modulos.values()].map(m => `
       <form class="formulario-dato" data-modulo='${esc(JSON.stringify(m))}'>
         <p><b>Módulo nuevo: ${esc(m.en_informe)}</b> (${esc(m.unidad)}). Indica sus horas lectivas totales:
           con ellas se calculan el 7,5 % y el 15 %.</p>
@@ -267,12 +278,20 @@ $("#resultado-proceso").addEventListener("click", ev => {
   if (ev.target.matches("[data-ir-avisos]")) mostrarVista("avisos");
 });
 
+$("#resultado-proceso").addEventListener("change", ev => {
+  if (ev.target.name === "existente") $(".campo-firma", ev.target.form).classList.toggle("oculto", !!ev.target.value);
+});
+
 $("#resultado-proceso").addEventListener("submit", async ev => {
   ev.preventDefault();
   const form = ev.target;
   const datos = Object.fromEntries(new FormData(form));
   try {
-    if (form.dataset.profesor) {
+    if (form.dataset.profesor && datos.existente) {
+      const r = await api("/api/profesor/vincular", { profesor: form.dataset.profesor, existente: datos.existente });
+      tostada(`Reconocido: ${r.firma}`, "ok");
+    } else if (form.dataset.profesor) {
+      if (!datos.firma?.trim()) { tostada("Escribe el nombre para la firma", "error"); return; }
       await api("/api/profesor", { profesor: form.dataset.profesor, firma: datos.firma });
       tostada("Profesor/a registrado", "ok");
     } else {
@@ -364,6 +383,7 @@ function pintarAvisos() {
       <td class="col-check"><input type="checkbox" data-ruta="${esc(d.ruta)}" ${estadoAvisos.marcados.has(d.ruta) ? "checked" : ""}></td>
       <td>${chipTipo(d.tipo)}</td>
       <td>${esc(d.alumno || d.archivo)}${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}
+        ${d.correo && carpeta !== "anulados" ? `<span class="motivo">${esc(d.correo)}</span>` : ""}
         ${carpeta === "anulados" ? `<span class="motivo">Anulado el ${esc(fechaHora(d.fecha_anulacion))}${porQuien(d.anulado_por)}: ${esc(d.motivo_anulacion)}</span>` : ""}
         ${carpeta === "realizados" && d.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(d.fecha_entrega))}${porQuien(d.entregado_por)}</span>` : ""}</td>
       <td>${esc(d.grupo)}</td>
@@ -374,6 +394,7 @@ function pintarAvisos() {
       <td class="acciones-fila">
         ${d.pdf ? `<a class="enlace" href="${url}" target="_blank">Ver</a>` : ""}
         <a class="enlace" href="${url}&descargar=1">Descargar</a>
+        ${carpeta !== "anulados" ? `<button class="enlace" data-correo="${esc(d.ruta)}" title="${d.correo ? `Preparar el correo para ${esc(d.correo)}` : "No hay correo de este alumno/a: habrá que escribirlo"}">Correo</button>` : ""}
         ${carpeta === "pendientes" ? `<button class="enlace" data-entregar="${esc(d.ruta)}">Entregado</button>` : ""}
       </td></tr>`;
   }).join("");
@@ -407,7 +428,43 @@ $("#tabla-avisos").addEventListener("change", ev => {
 $("#tabla-avisos").addEventListener("click", ev => {
   const ruta = ev.target.dataset?.entregar;
   if (ruta) entregar(estadoAvisos.lista.filter(d => d.ruta === ruta));
+  const correo = ev.target.dataset?.correo;
+  if (correo) enviarCorreo(estadoAvisos.lista.filter(d => d.ruta === correo));
 });
+
+/**
+ * «Enviar por correo»: Thunderbird abre un correo por aviso con el PDF adjunto y el texto escritos
+ * (o se descargan ficheros .eml). El profesor/a lo revisa y lo envía; WebPEC no envía nada.
+ */
+async function enviarCorreo(docs) {
+  if (!docs.length) return;
+  if (docs.length > 10 && !await dialogo("Muchos correos",
+    `<p>Se abrirán ${docs.length} ventanas de correo, una por aviso.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Seguir", clase: "principal", valor: true }])) return;
+  let r;
+  try {
+    r = await api("/api/correo", { carpeta: estadoAvisos.carpeta, rutas: docs.map(d => d.ruta) });
+  } catch (e) { error(e); return; }
+  if (r.programa === "eml") {
+    // Un fichero .eml por aviso: se abre con el programa de correo (borrador con el PDF adjunto)
+    docs.forEach((d, i) => setTimeout(() => {
+      const enlace = document.createElement("a");
+      enlace.href = `/correo.eml?carpeta=${estadoAvisos.carpeta}&ruta=${encodeURIComponent(d.ruta)}`;
+      enlace.click();
+    }, i * 400));
+  }
+  const sin = r.sin_correo.length
+    ? `<p class="peligro-texto">Sin correo guardado (habrá que escribir la dirección): ${r.sin_correo.map(esc).join(", ")}.</p>
+       <p class="nota">Los correos del alumnado se importan en la pestaña Alumnado.</p>` : "";
+  const cuantos = plural(docs.length, "correo", "correos");
+  await dialogo(r.programa === "eml" ? "Correos descargados" : "Correos preparados en Thunderbird",
+    (r.programa === "eml"
+      ? `<p>Se ${docs.length === 1 ? "ha" : "han"} descargado ${cuantos} (.eml). Ábrelos con tu programa de correo, revísalos y envíalos.</p>`
+      : `<p>Thunderbird ha abierto ${cuantos} con el aviso adjunto y el texto escritos. Revísalos y pulsa <b>Enviar</b>.</p>`) +
+    `${sin}<p class="nota">Recuerda: es la entrega oficial al alumnado. Cuando estén enviados, pásalos a Entregados.</p>`,
+    [{ texto: "Entendido", clase: "principal", valor: true }]);
+  if (estadoAvisos.carpeta === "pendientes") preguntarDespues(docs, "enviados");
+}
 
 function actualizarBarraSeleccion() {
   const n = estadoAvisos.marcados.size;
@@ -418,6 +475,7 @@ function actualizarBarraSeleccion() {
   const anulados = estadoAvisos.carpeta === "anulados";
   $("#accion-mover").classList.toggle("oculto", anulados);
   $("#accion-anular").classList.toggle("oculto", anulados);
+  $("#accion-correo").classList.toggle("oculto", anulados);
 }
 
 function seleccion() {
@@ -488,6 +546,8 @@ $("#accion-imprimir").addEventListener("click", async () => {
   };
   marco.src = url;
 });
+
+$("#accion-correo").addEventListener("click", () => enviarCorreo(seleccion()));
 
 $("#accion-zip").addEventListener("click", () => {
   const docs = seleccion();
@@ -668,6 +728,8 @@ async function cargarConfig() {
     const nombres = { libreoffice: "LibreOffice", word: "Microsoft Word", ninguno: "ninguno (los avisos quedarán en .docx)" };
     $("#conversor-detectado").textContent = `En este ordenador, la conversión automática usa: ${nombres[r.conversor_detectado]}`;
     $("#carpeta-datos").textContent = `Carpeta de datos: ${r.carpeta}`;
+    $("#correo-detectado").textContent = r.thunderbird ? `Thunderbird encontrado: ${r.thunderbird}`
+      : "No se encuentra Thunderbird en este ordenador: «Automático» descargará ficheros .eml";
     pintarCabecera(r.config, r.version);
     if (r.migracion?.length) {
       await dialogo(`Datos actualizados a WebPEC ${r.version}`,

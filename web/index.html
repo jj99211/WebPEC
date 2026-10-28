@@ -116,6 +116,7 @@
         <div class="acciones">
           <button class="boton principal" id="accion-imprimir">Imprimir</button>
           <button class="boton" id="accion-zip">Descargar ZIP</button>
+          <button class="boton" id="accion-correo">Enviar por correo</button>
           <button class="boton" id="accion-mover"></button>
           <button class="boton peligro" id="accion-anular">Anular…</button>
         </div>
@@ -240,6 +241,14 @@
               <option value="ninguno">Ninguna (dejar en .docx)</option>
             </select>
             <small id="conversor-detectado"></small>
+          </label>
+          <label>Enviar por correo con
+            <select name="programa_correo">
+              <option value="auto">Automático (Thunderbird si está instalado)</option>
+              <option value="thunderbird">Thunderbird</option>
+              <option value="eml">Fichero .eml (para cualquier programa de correo)</option>
+            </select>
+            <small id="correo-detectado"></small>
           </label>
         </div>
 

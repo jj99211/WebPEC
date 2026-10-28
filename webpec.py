@@ -159,6 +159,7 @@ class Manejador(BaseHTTPRequestHandler):
                 migracion, m.migracion = m.migracion, []
                 return self._json({"config": m.config(), "version": VERSION,
                                    "conversor_detectado": motor_pec.nombre_conversor("auto"),
+                                   "thunderbird": motor_pec.buscar_thunderbird() or "",
                                    "carpeta": str(m.base), "migracion": migracion})
             if ruta == "/informe":
                 fichero = m.ruta_informe(q.get("id", ""))
@@ -172,6 +173,9 @@ class Manejador(BaseHTTPRequestHandler):
             if ruta == "/imprimir":
                 datos = m.unir_pdf(q.get("carpeta", ""), q.get("r", []))
                 return self._fichero(datos, "WebPEC_imprimir.pdf", "application/pdf", False)
+            if ruta == "/correo.eml":
+                nombre, datos = m.eml(q.get("carpeta", ""), q.get("ruta", ""))
+                return self._fichero(datos, nombre, "message/rfc822", True)
             if ruta == "/zip":
                 datos = m.zip_documentos(q.get("carpeta", ""), q.get("r", []))
                 return self._fichero(datos, "WebPEC_avisos.zip", "application/zip", True)
@@ -228,6 +232,13 @@ class Manejador(BaseHTTPRequestHandler):
             r = m.nuevo_profesor(d.get("nombre"), d.get("apellidos"))
             m.usuario = m.usuario or r["firma"]  # quien se da de alta a sí mismo
             return r, "Alta de profesor/a" if r["nuevo"] else None, r["firma"]
+        if ruta == "/api/profesor/vincular":
+            r = m.vincular_profesor(d.get("profesor", ""), d.get("existente", ""))
+            return r, "Reconocer profesor/a del informe", f"{d.get('existente')} → {d.get('profesor')} ({r['firma']})"
+        if ruta == "/api/correo":
+            r = m.preparar_correos(d.get("carpeta", ""), d.get("rutas", []))
+            return r, "Preparar correos" if r["programa"] == "thunderbird" else "Descargar correos (.eml)", \
+                ", ".join(x.split("/")[-1] for x in d.get("rutas", []))
         if ruta == "/api/profesor/borrar":
             m.borrar_profesor(d.get("profesor", ""))
             return {"ok": True}, "Borrar profesor/a", d.get("profesor", "")

@@ -34,9 +34,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 import zipfile
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path, PurePosixPath
 from xml.sax.saxutils import escape
 
@@ -84,6 +86,11 @@ DIRECCION_PLANTILLA = "LUISA CAPELL SÁNCHEZ-RUBIO"
 # Formatos de fecha admitidos para los nombres de fichero
 FORMATOS_FECHA = {"AAAAMMDD": "%Y%m%d", "DDMMAAAA": "%d%m%Y"}
 CONVERSORES = ["auto", "libreoffice", "word", "ninguno"]
+# Programa de correo: auto (Thunderbird si está instalado; si no, fichero .eml), thunderbird o eml
+PROGRAMAS_CORREO = ["auto", "thunderbird", "eml"]
+# Carpeta personal donde se dejan el PDF y el texto de cada correo para el programa de correo
+# (Thunderbird instalado como snap en Linux no puede leer /tmp ni otros discos)
+CARPETA_CORREO = Path.home() / "WebPEC_correo"
 
 CONFIGURACION_DEFECTO = {
     "centro": "IES Rosa Chacel",
@@ -92,6 +99,7 @@ CONFIGURACION_DEFECTO = {
     "direccion": "Luisa Capell Sánchez-Rubio",
     "conversor_pdf": "auto",
     "formato_fecha_fichero": "AAAAMMDD",
+    "programa_correo": "auto",
     "puerto": "8765",
     "acceso_red": "no",
 }
@@ -110,6 +118,11 @@ direccion = {direccion}
 conversor_pdf = {conversor_pdf}
 ; Fecha al principio de los nombres de fichero: AAAAMMDD (se ordenan por fecha) o DDMMAAAA
 formato_fecha_fichero = {formato_fecha_fichero}
+
+[correo]
+; Programa para «Enviar por correo»: auto (Thunderbird si está instalado; si no, se descarga un
+; fichero .eml para abrirlo con el programa de correo), thunderbird o eml
+programa_correo = {programa_correo}
 
 [servidor]
 ; Puerto de la aplicación web: http://localhost:<puerto>
@@ -191,6 +204,9 @@ def leer_configuracion(base):
     valores["formato_fecha_fichero"] = valores["formato_fecha_fichero"].upper()
     if valores["formato_fecha_fichero"] not in FORMATOS_FECHA:
         valores["formato_fecha_fichero"] = "AAAAMMDD"
+    valores["programa_correo"] = valores["programa_correo"].lower()
+    if valores["programa_correo"] not in PROGRAMAS_CORREO:
+        valores["programa_correo"] = "auto"
     return valores
 
 
@@ -203,6 +219,8 @@ def guardar_configuracion(base, nuevos):
         raise ErrorPEC(f"Conversor no válido: {valores['conversor_pdf']}")
     if valores["formato_fecha_fichero"] not in FORMATOS_FECHA:
         raise ErrorPEC(f"Formato de fecha no válido: {valores['formato_fecha_fichero']}")
+    if valores["programa_correo"] not in PROGRAMAS_CORREO:
+        raise ErrorPEC(f"Programa de correo no válido: {valores['programa_correo']}")
     if not valores["puerto"].isdigit():
         raise ErrorPEC("El puerto debe ser un número")
     (base / CONFIGURACION).write_text(PLANTILLA_CONFIGURACION.format(**valores), encoding="utf-8")
@@ -309,6 +327,13 @@ class HojaModulos:
 
     def borrar_modulo(self, fila):
         self._guardar(lambda libro: libro[PESTANA_MODULOS].delete_rows(fila))
+
+    def cambiar_nombre_informe(self, profesor_informe, nuevo):
+        dato = self.profesores.get(normalizar(profesor_informe))
+        if dato:
+            def cambiar(libro):
+                libro[PESTANA_PROFESORES].cell(dato[0], 1).value = nuevo
+            self._guardar(cambiar)
 
     def borrar_profesor(self, profesor_informe):
         dato = self.profesores.get(normalizar(profesor_informe))
@@ -417,6 +442,12 @@ def nombres_cortos(alumnos):
         if corto in repetidos:
             cortos[alumno] = para_fichero(alumno)
     return cortos
+
+
+def parecido_nombres(a, b):
+    """Parte de las palabras de a que están en b (0 a 1), sin tildes ni mayúsculas."""
+    pa, pb = set(clave_alumno(a).split()), set(clave_alumno(b).split())
+    return len(pa & pb) / len(pa) if pa else 0
 
 
 def carpeta_profesor(profesor_informe):
@@ -554,6 +585,66 @@ def extraer_correos(filas):
         if alumno:
             resultado.append((f[col_grupo].strip() if col_grupo is not None else "", alumno, correo))
     return resultado
+
+
+# ------------------------------------------------------ envío por correo ---
+
+def texto_correo(fila, firma, config):
+    """Asunto y texto (HTML) del correo que acompaña a un aviso."""
+    alumno = nombre_completo(fila["alumno"])
+    modulo, grupo, fecha = fila["nombre_modulo"], fila["grupo"], fecha_legible(fila["fecha_informe"])
+    if fila["tipo"] == AVISO:
+        asunto = f"Aviso de pérdida de evaluación continua - {modulo} ({grupo})"
+        que = (f"el <b>aviso de pérdida de la evaluación continua</b> en el módulo <b>{escape(modulo)}</b> "
+               f"({escape(grupo)}): según el informe de faltas del {fecha}, tus faltas injustificadas "
+               f"superan el 7,5 % de las horas del módulo")
+    else:
+        asunto = f"Pérdida de evaluación continua - {modulo} ({grupo})"
+        que = (f"la <b>confirmación de la pérdida de la evaluación continua</b> en el módulo "
+               f"<b>{escape(modulo)}</b> ({escape(grupo)}): según el informe de faltas del {fecha}, tus "
+               f"faltas injustificadas superan el 15 % de las horas del módulo")
+    html = (f'<html><head><meta charset="utf-8"></head><body>'
+            f"<p>Hola, {escape(alumno)}:</p>"
+            f"<p>Te envío adjunto {que}.</p>"
+            f"<p>Por favor, responde a este correo para confirmar que lo has recibido.</p>"
+            f"<p>Un saludo,<br>{escape(firma)}<br>{escape(config['centro'])}</p></body></html>")
+    return asunto, html
+
+
+def buscar_thunderbird():
+    for nombre in ("thunderbird", "thunderbird.exe"):
+        if shutil.which(nombre):
+            return shutil.which(nombre)
+    for raiz in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)")):
+        if raiz and (Path(raiz) / "Mozilla Thunderbird" / "thunderbird.exe").exists():
+            return str(Path(raiz) / "Mozilla Thunderbird" / "thunderbird.exe")
+    return None
+
+
+def preparar_carpeta_correo():
+    """Crea CARPETA_CORREO y borra lo que dejaron los correos de hace más de dos días."""
+    CARPETA_CORREO.mkdir(exist_ok=True)
+    limite = time.time() - 2 * 24 * 3600
+    for fichero in CARPETA_CORREO.iterdir():
+        try:
+            if fichero.is_file() and fichero.stat().st_mtime < limite:
+                fichero.unlink()
+        except OSError:
+            pass
+
+
+def abrir_thunderbird(programa, para, asunto, cuerpo, adjunto):
+    """Ventana de redacción de Thunderbird con todo preparado. El profesor/a revisa y envía."""
+    def valor(texto):  # entre comillas simples para -compose: sin comillas simples dentro
+        return str(texto).replace("'", "’")
+    campos = [f"to='{valor(para)}'", f"subject='{valor(asunto)}'", f"message='{valor(cuerpo)}'",
+              "format='1'", f"attachment='{adjunto.as_uri()}'"]
+    opciones = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        opciones["creationflags"] = subprocess.DETACHED_PROCESS
+    else:
+        opciones["start_new_session"] = True
+    subprocess.Popen([programa, "-compose", ",".join(campos)], **opciones)
 
 
 # ---------------------------------------------------- migración de datos ---
@@ -978,8 +1069,13 @@ class Motor:
             "firma": firma,
         })
         if firma is None:
+            # Quizá ya está en la lista con otro nombre (p. ej. dado de alta a mano sin el segundo nombre)
+            candidatos = sorted(({"en_informe": p[1], "firma": p[2],
+                                  "parecido": round(parecido_nombres(informe["profesor"], p[1]), 2)}
+                                 for p in hoja.profesores.values()), key=lambda c: -c["parecido"])
             item["falta_firma"] = {"profesor": informe["profesor"],
-                                   "propuesta": nombre_completo(informe["profesor"])}
+                                   "propuesta": nombre_completo(informe["profesor"]),
+                                   "candidatos": candidatos}
         if modulo is None:
             item["falta_modulo"] = {
                 "unidad": informe["unidad"], "en_informe": informe["modulo"],
@@ -1206,6 +1302,19 @@ class Motor:
         hoja.guardar_profesor(en_informe, firma)
         return {"firma": firma, "nuevo": True}
 
+    def vincular_profesor(self, profesor_informe, existente):
+        """
+        El profesor/a del informe es alguien que ya está en la lista con otro nombre: se le pone el
+        nombre que trae el informe (la firma no cambia).
+        """
+        hoja = self.hoja()
+        if hoja.firma(existente) is None:
+            raise ErrorPEC("Ese profesor/a ya no está en la lista; recarga la página")
+        if hoja.firma(profesor_informe) is not None:
+            raise ErrorPEC(f"«{profesor_informe}» ya está en la lista")
+        hoja.cambiar_nombre_informe(existente, profesor_informe.strip())  # la hoja se vuelve a leer
+        return {"firma": hoja.firma(profesor_informe)}
+
     def borrar_profesor(self, profesor):
         hoja = self.hoja()
         if hoja.firma(profesor) is None:
@@ -1242,6 +1351,7 @@ class Motor:
                          if anulada(f) == (carpeta == "anulados")}
         hoja = self.hoja()
         firmas = {para_fichero(p[1]): p[2] for p in hoja.profesores.values()}
+        correos = self._correos()
         lista = []
         for ruta in sorted(raiz.glob("*/*")):
             if not ruta.is_file() or ruta.suffix.lower() not in (".pdf", ".docx"):
@@ -1262,6 +1372,7 @@ class Motor:
                 "anulado_por": fila.get("anulado_por", ""),
                 "fecha_entrega": fila.get("fecha_entrega", ""),
                 "entregado_por": fila.get("entregado_por", ""),
+                "correo": self._correo_de(correos, fila) if fila else "",
             })
         lista.sort(key=lambda d: (d["orden"], d["profesor"], d["archivo"]), reverse=True)
         return lista
@@ -1488,6 +1599,75 @@ class Motor:
         except PermissionError:
             raise ErrorPEC(f"No se puede escribir en {CORREOS}: ciérralo en Excel y vuelve a intentarlo")
         return resultado
+
+    @staticmethod
+    def _correo_de(correos, fila):
+        clave = clave_alumno(fila.get("alumno", ""))
+        return correos.get((normalizar(fila.get("grupo", "")), clave)) or correos.get(("", clave), "")
+
+    # ---- envío por correo (lo prepara el programa de correo; WebPEC no envía nada)
+
+    def programa_correo(self):
+        """'thunderbird' o 'eml', según la configuración y lo que haya instalado."""
+        elegido = self.config()["programa_correo"]
+        if elegido == "eml" or (elegido == "auto" and not buscar_thunderbird()):
+            return "eml"
+        return "thunderbird"
+
+    def _datos_correo(self, carpeta, relativa):
+        """Fichero, fila del registro, destinatario, asunto y texto (HTML) del correo de un aviso."""
+        ruta = self.ruta_documento(carpeta, relativa)
+        fila = next((f for f in leer_registro(self.base / REGISTRO)
+                     if f["documento"] == ruta.name and not anulada(f)), None)
+        if fila is None:
+            raise ErrorPEC(f"{ruta.name} no está en el registro")
+        firma = self.hoja().firma(fila["profesor"]) or nombre_completo(fila["profesor"])
+        asunto, html = texto_correo(fila, firma, self.config())
+        return ruta, fila, self._correo_de(self._correos(), fila), asunto, html
+
+    def preparar_correos(self, carpeta, rutas):
+        """Abre en Thunderbird un correo por aviso, con el PDF adjunto y el texto ya escritos."""
+        if not rutas:
+            raise ErrorPEC("No hay ningún aviso elegido")
+        programa = self.programa_correo()
+        sin_correo, abiertos = [], 0
+        if programa == "thunderbird":
+            thunderbird = buscar_thunderbird()
+            if not thunderbird:
+                raise ErrorPEC("No se encuentra Thunderbird. En Configuración se puede elegir «fichero .eml».")
+            preparar_carpeta_correo()
+            for relativa in rutas:
+                ruta, fila, correo, asunto, html = self._datos_correo(carpeta, relativa)
+                if not correo:
+                    sin_correo.append(fila["alumno"])
+                # Copias que el programa de correo pueda leer
+                adjunto = CARPETA_CORREO / ruta.name
+                shutil.copyfile(ruta, adjunto)
+                cuerpo = CARPETA_CORREO / f"{ruta.stem}.html"
+                cuerpo.write_text(html, encoding="utf-8")
+                abrir_thunderbird(thunderbird, correo, asunto, cuerpo, adjunto)
+                abiertos += 1
+        else:
+            for relativa in rutas:
+                _, fila, correo, _, _ = self._datos_correo(carpeta, relativa)
+                if not correo:
+                    sin_correo.append(fila["alumno"])
+        return {"programa": programa, "abiertos": abiertos, "sin_correo": sin_correo}
+
+    def eml(self, carpeta, relativa):
+        """Fichero .eml (borrador sin enviar) con el aviso adjunto, para el programa de correo."""
+        ruta, fila, correo, asunto, html = self._datos_correo(carpeta, relativa)
+        mensaje = EmailMessage()
+        mensaje["To"] = correo
+        mensaje["Subject"] = asunto
+        mensaje["X-Unsent"] = "1"  # Outlook y otros lo abren como borrador para enviar
+        texto = html.replace("<br>", "\n").replace("</p>", "\n\n")
+        mensaje.set_content(re.sub(r"<[^>]+>", "", texto).strip())
+        mensaje.add_alternative(html, subtype="html")
+        tipo = ("application", "pdf") if ruta.suffix.lower() == ".pdf" else \
+            ("application", "vnd.openxmlformats-officedocument.wordprocessingml.document")
+        mensaje.add_attachment(ruta.read_bytes(), maintype=tipo[0], subtype=tipo[1], filename=ruta.name)
+        return f"{ruta.stem}.eml", bytes(mensaje)
 
     # ---- exportar e importar todos los datos
 

@@ -8,6 +8,17 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.11 — 2026-10-28
+
+- **Enviar por correo** (botón en cada aviso y en la barra de selección): Thunderbird abre un correo por aviso con
+  la dirección del alumno/a (si se importó), el asunto, un texto explicativo y el PDF adjunto, listo para revisar y
+  enviar. Sin Thunderbird (o eligiéndolo en Configuración), se descarga un borrador `.eml` por aviso. Los adjuntos se
+  copian a `~/WebPEC_correo` (Thunderbird instalado como snap no puede leer otros discos); se limpia sola.
+- **Profesor/a con el nombre escrito de otra forma**: si el nombre de un informe se parece al de alguien de la lista
+  (p. ej. dado de alta a mano sin el segundo nombre), al procesar se pregunta si es la misma persona; al confirmarlo
+  se guarda con el nombre de Raíces y conserva su firma.
+- La pestaña Avisos muestra el correo de cada alumno/a.
+
 ## 3.10 — 2026-10-28
 
 - **El instalador instala y actualiza solo.** Pregunta dónde instalar: si ya hay un WebPEC en el ordenador (lo
