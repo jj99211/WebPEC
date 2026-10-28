@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.11*
+Manual de la versión 3.20*
 
 ---
 
@@ -157,6 +157,19 @@ exportación de Raíces o de EducaMadrid) con su nombre y su correo; si el fiche
 también se usa. Las columnas se reconocen solas y los correos que ya había se actualizan. Los correos se ven en esta
 pestaña; **WebPEC no envía nada**.
 
+En cada fila:
+
+- **Editar**: corrige a mano el nombre (apellidos y nombre) o el correo del alumno/a. El nombre corregido se usa en
+  los listados, en los correos y en los avisos que se generen a partir de entonces (los ya generados no cambian);
+  los informes de Raíces se siguen reconociendo con el nombre original.
+- **Baja**: para quien se ha dado de baja en el centro pero sigue saliendo en los informes de Raíces. Desaparece de
+  la lista y **no vuelve a recibir avisos** en ningún módulo de su grupo, aunque siga en los informes. Hay que
+  confirmarlo y se puede anotar el motivo. Sus avisos ya generados y el registro se conservan: si le quedan avisos
+  en Pendientes, WebPEC lo indica para anularlos si ya no se van a entregar.
+
+Al final de la pestaña, **Alumnado dado de baja** lista las bajas (con fecha, quién la dio y motivo); **Recuperar**
+deshace una baja dada por error.
+
 ### Registro
 
 Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI), umbral, profesor/a,
@@ -205,6 +218,7 @@ Cierra WebPEC de forma ordenada.
 - **FI ≥ 15 %**, con aviso en un informe anterior y con más faltas que entonces → **Confirmación de pérdida**.
   Si no ha acumulado más faltas desde el aviso, se espera al siguiente informe.
 - Ningún documento se genera dos veces para el mismo alumno, grupo, módulo y tipo.
+- El alumnado dado de baja en la pestaña Alumnado no recibe avisos nuevos.
 
 ## 6. Dónde se guardan los datos
 
@@ -222,7 +236,7 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | `registro_avisos.csv` | Registro de avisos emitidos (no borrar filas a mano) |
 | `configuracion.ini` | Configuración |
 | `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos y antes de poner al día los datos de una versión anterior |
-| `correos_alumnado.csv` | Correos del alumnado importados |
+| `alumnado.csv` | Correos del alumnado, nombres corregidos a mano y bajas |
 | `actividad.csv` | Quién ha hecho cada acción y cuándo |
 | `VERSION_DATOS`, `migraciones.log` | Formato de los datos e historial de sus actualizaciones |
 

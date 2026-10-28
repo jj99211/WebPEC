@@ -8,6 +8,16 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.20 — 2026-10-28
+
+- **Dar de baja a un alumno/a** (pestaña Alumnado, enlace «Baja»): para quien ha dejado el centro pero sigue en los
+  informes de Raíces. Desaparece de la lista y no vuelve a recibir avisos en ningún módulo de su grupo. Sus avisos ya
+  generados y el registro se conservan (si tiene avisos en Pendientes, WebPEC lo indica para anularlos). Las bajas
+  se ven al final de la pestaña, en «Alumnado dado de baja», donde se pueden **recuperar** si fueron un error.
+- **Editar un alumno/a** (enlace «Editar»): corregir a mano su nombre o su correo. El nombre corregido se usa en los
+  listados, en los correos y en los avisos nuevos; los informes de Raíces se siguen reconociendo por el original.
+- Formato de datos 5: `correos_alumnado.csv` pasa a `alumnado.csv` (se migra solo al arrancar, con copia previa).
+
 ## 3.12 — 2026-10-28
 
 - Avisos: la barra de selección (Imprimir, Descargar ZIP, Enviar por correo, Entregados, Anular…) se ve en una sola

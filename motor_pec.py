@@ -15,7 +15,7 @@ Datos (en DATOS/, dentro de la carpeta del programa; se crean solos si no existe
   COPIAS_SEGURIDAD/              copias antes de vaciar el registro o la hoja y antes de migrar los datos
   VERSION_DATOS                  formato de los datos (lo pone al día migrar_datos al arrancar)
   actividad.csv                  quién ha hecho cada acción y cuándo
-  correos_alumnado.csv           correos del alumnado importados (solo como dato)
+  alumnado.csv                   correos del alumnado, nombres corregidos a mano y bajas
 
 Reglas (valor de referencia: columna FI, faltas injustificadas):
   - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
@@ -70,11 +70,12 @@ DATOS = "DATOS"
 VERSION_DATOS = "VERSION_DATOS"
 LOG_MIGRACIONES = "migraciones.log"
 ACTIVIDAD = "actividad.csv"
-CORREOS = "correos_alumnado.csv"
+ALUMNADO = "alumnado.csv"
+CORREOS_4 = "correos_alumnado.csv"  # el fichero de correos del formato de datos 4
 
 # Formato de los datos. 2: WebPEC 2.x (datos sueltos en la carpeta del programa);
 # 3: carpeta DATOS/ y registro con anulaciones; 4: registro con quién genera, entrega y anula.
-FORMATO_DATOS = 4
+FORMATO_DATOS = 5
 # Lo que en la 2.x estaba en la carpeta del programa y en la 3 va dentro de DATOS/
 DATOS_2X = [CONFIGURACION, HOJA_MODULOS, REGISTRO, NUEVOS, PROCESAR, PROCESADOS,
             PENDIENTES, REALIZADOS, COPIAS]
@@ -587,11 +588,52 @@ def extraer_correos(filas):
     return resultado
 
 
+# ------------------------------------------------- fichas del alumnado ---
+# Una fila por alumno/a y grupo con lo que Raíces no da o da mal: correo, nombre corregido a mano y baja.
+# «alumno» es el nombre tal como viene en Raíces (o en el fichero de correos); con grupo vacío, la fila
+# vale para cualquier grupo (correos importados sin grupo).
+
+CAMPOS_ALUMNADO = ["grupo", "alumno", "nombre", "correo", "baja", "baja_por", "motivo_baja"]
+
+
+def leer_alumnado(ruta):
+    if not ruta.exists():
+        return []
+    with open(ruta, encoding="utf-8-sig", newline="") as f:
+        return [{c: (fila.get(c) or "") for c in CAMPOS_ALUMNADO} for fila in csv.DictReader(f, delimiter=";")]
+
+
+def escribir_alumnado(ruta, filas):
+    temporal = ruta.with_name(ruta.name + ".tmp")
+    try:
+        with open(temporal, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=CAMPOS_ALUMNADO, delimiter=";", extrasaction="ignore")
+            w.writeheader()
+            w.writerows(sorted(filas, key=lambda f: (f["grupo"], normalizar(f["alumno"]))))
+        os.replace(temporal, ruta)
+    except PermissionError:
+        raise ErrorPEC(f"No se puede escribir en {ALUMNADO}: ciérralo en Excel y vuelve a intentarlo")
+
+
+def clave_ficha(grupo, alumno):
+    return normalizar(grupo or ""), clave_alumno(alumno)
+
+
+def ficha_de(fichas, grupo, alumno):
+    """Datos de un alumno/a en su grupo; nombre y correo pueden venir de una fila sin grupo."""
+    propia = fichas.get(clave_ficha(grupo, alumno), {})
+    general = fichas.get(clave_ficha("", alumno), {})
+    ficha = {c: propia.get(c, "") for c in ("baja", "baja_por", "motivo_baja")}
+    ficha.update({c: propia.get(c) or general.get(c, "") for c in ("nombre", "correo")})
+    ficha["nombre"] = ficha["nombre"] or alumno
+    return ficha
+
+
 # ------------------------------------------------------ envío por correo ---
 
-def texto_correo(fila, firma, config):
-    """Asunto y texto (HTML) del correo que acompaña a un aviso."""
-    alumno = nombre_completo(fila["alumno"])
+def texto_correo(fila, firma, config, alumno=None):
+    """Asunto y texto (HTML) del correo que acompaña a un aviso (alumno: nombre corregido, si lo hay)."""
+    alumno = nombre_completo(alumno or fila["alumno"])
     modulo, grupo, fecha = fila["nombre_modulo"], fila["grupo"], fecha_legible(fila["fecha_informe"])
     if fila["tipo"] == AVISO:
         asunto = f"Aviso de pérdida de evaluación continua - {modulo} ({grupo})"
@@ -721,7 +763,20 @@ def migrar_3_a_4(datos, antigua):
     return [f"{REGISTRO}: añadidas las columnas de quién genera, entrega y anula cada aviso"]
 
 
-MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4}
+def migrar_4_a_5(datos, antigua):
+    """correos_alumnado.csv pasa a alumnado.csv, que además guarda nombres corregidos y bajas."""
+    viejo, nuevo = datos / CORREOS_4, datos / ALUMNADO
+    if not viejo.exists():
+        return []
+    if not nuevo.exists():  # si ya existe, es de un intento anterior que no llegó a borrar el viejo
+        with open(viejo, encoding="utf-8-sig", newline="") as f:
+            filas = [{c: (fila.get(c) or "") for c in CAMPOS_ALUMNADO} for fila in csv.DictReader(f, delimiter=";")]
+        escribir_alumnado(nuevo, filas)
+    viejo.unlink()
+    return [f"{CORREOS_4} pasa a {ALUMNADO} (correos, nombres corregidos y bajas del alumnado)"]
+
+
+MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4, 4: migrar_4_a_5}
 
 
 def migrar_datos(datos, antigua=None):
@@ -1144,16 +1199,18 @@ class Motor:
         leidos.sort(key=lambda r: (r[1]["fecha"], r[1]["unidad"], r[1]["modulo"]))
 
         resumen = {"informes": [], "avisos": 0, "perdidas": 0, "mensajes": []}
+        fichas = self._fichas()
         for ruta, informe in leidos:
             modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
             firma = hoja.firma(informe["profesor"])
             if modulo is None or firma is None:
                 continue
-            situacion = evaluar(informe, modulo, registro)
+            situacion = [a for a in evaluar(informe, modulo, registro)
+                         if not ficha_de(fichas, informe["unidad"], a["alumno"])["baja"]]
             nuevos = [a for a in situacion if a["tipo"]]
             documentos = []
             if nuevos:
-                filas, aviso = self._generar(config, informe, modulo, firma, nuevos)
+                filas, aviso = self._generar(config, informe, modulo, firma, nuevos, fichas)
                 registro.extend(filas)
                 documentos = [f["documento"] for f in filas]
                 resumen["avisos"] += sum(f["tipo"] == AVISO for f in filas)
@@ -1172,21 +1229,23 @@ class Motor:
         resumen["sin_procesar"] = [i for i in quedan if i.get("error") or i.get("duplicado")]
         return resumen
 
-    def _generar(self, config, informe, modulo, firma, nuevos):
+    def _generar(self, config, informe, modulo, firma, nuevos, fichas):
         grupo, siglas, fecha = informe["unidad"], modulo["siglas"], informe["fecha"]
+        # Los documentos llevan el nombre corregido a mano, si lo hay; el registro, el de Raíces
+        nombres = {a["alumno"]: ficha_de(fichas, grupo, a["alumno"])["nombre"] for a in informe["alumnos"]}
         carpeta = carpeta_profesor(informe["profesor"])
         pendientes = self.base / PENDIENTES / carpeta
         pendientes.mkdir(parents=True, exist_ok=True)
         (self.base / REALIZADOS / carpeta).mkdir(parents=True, exist_ok=True)
-        cortos = nombres_cortos(informe["alumnos"])
+        cortos = nombres_cortos([{"alumno": n} for n in nombres.values()])
         filas = []
         with tempfile.TemporaryDirectory() as tmp:
             docx_lista = []
             for a in nuevos:
                 nombre = f"{fecha_fichero(config, fecha)}_{a['tipo']}_{para_fichero(grupo)}_" \
-                         f"{siglas}_{cortos[a['alumno']]}"
+                         f"{siglas}_{cortos[nombres[a['alumno']]]}"
                 docx = Path(tmp) / f"{nombre}.docx"
-                crear_docx(PROGRAMA, config, a["tipo"], docx, nombre_completo(a["alumno"]),
+                crear_docx(PROGRAMA, config, a["tipo"], docx, nombre_completo(nombres[a["alumno"]]),
                            grupo, modulo["nombre"], firma, fecha)
                 docx_lista.append(docx)
                 filas.append({
@@ -1351,17 +1410,18 @@ class Motor:
                          if anulada(f) == (carpeta == "anulados")}
         hoja = self.hoja()
         firmas = {para_fichero(p[1]): p[2] for p in hoja.profesores.values()}
-        correos = self._correos()
+        fichas = self._fichas()
         lista = []
         for ruta in sorted(raiz.glob("*/*")):
             if not ruta.is_file() or ruta.suffix.lower() not in (".pdf", ".docx"):
                 continue
             fila = por_documento.get(ruta.name, {})
             tipo = fila.get("tipo") or (AVISO if f"_{AVISO}_" in ruta.name else PEC)
+            ficha = ficha_de(fichas, fila.get("grupo", ""), fila.get("alumno", "")) if fila else {}
             lista.append({
                 "ruta": f"{ruta.parent.name}/{ruta.name}", "archivo": ruta.name,
                 "profesor": firmas.get(ruta.parent.name, ruta.parent.name.replace("_", " ")),
-                "tipo": tipo, "alumno": fila.get("alumno", ""),
+                "tipo": tipo, "alumno": ficha.get("nombre", ""),
                 "grupo": fila.get("grupo", ""), "modulo": fila.get("nombre_modulo", ""),
                 "fi": fila.get("faltas_injustificadas", ""),
                 "fecha": fecha_legible(fila.get("fecha_informe", "")),
@@ -1372,7 +1432,7 @@ class Motor:
                 "anulado_por": fila.get("anulado_por", ""),
                 "fecha_entrega": fila.get("fecha_entrega", ""),
                 "entregado_por": fila.get("entregado_por", ""),
-                "correo": self._correo_de(correos, fila) if fila else "",
+                "correo": ficha.get("correo", ""),
             })
         lista.sort(key=lambda d: (d["orden"], d["profesor"], d["archivo"]), reverse=True)
         return lista
@@ -1526,7 +1586,7 @@ class Motor:
         """
         hoja = self.hoja()
         registro = leer_registro(self.base / REGISTRO)
-        correos = self._correos()
+        fichas = self._fichas()
         ultimos = {}
         for ruta in self._pdfs(PROCESADOS):
             informe = self._informe_procesado(ruta)
@@ -1543,13 +1603,15 @@ class Motor:
                 continue
             grupo, siglas = informe["unidad"], modulo["siglas"]
             for a in informe["alumnos"]:
+                ficha = ficha_de(fichas, grupo, a["alumno"])
+                if ficha["baja"]:
+                    continue
                 aviso = buscar_en_registro(registro, grupo, siglas, a["alumno"], AVISO)
                 perdida = buscar_en_registro(registro, grupo, siglas, a["alumno"], PEC)
                 estado = "perdida" if perdida else "aviso" if aviso else \
                     "supera" if a["fi"] >= modulo["umbral_75"] else "sin_avisos"
-                clave = clave_alumno(a["alumno"])
                 alumnos.append({
-                    "alumno": a["alumno"], "grupo": grupo, "siglas": siglas, "modulo": modulo["nombre"],
+                    "alumno": ficha["nombre"], "en_raices": a["alumno"], "grupo": grupo, "siglas": siglas, "modulo": modulo["nombre"],
                     "profesor": hoja.firma(informe["profesor"]) or informe["profesor"],
                     "fi": a["fi"], "horas": formato_umbral(modulo["horas"]),
                     "porcentaje": formato_umbral(round(a["fi"] * 100 / modulo["horas"], 1)),
@@ -1559,51 +1621,91 @@ class Motor:
                     "estado": estado, "informe": informe["fecha"].strftime("%d/%m/%Y"),
                     "fecha_aviso": fecha_legible(aviso["fecha_informe"]) if aviso else "",
                     "fecha_perdida": fecha_legible(perdida["fecha_informe"]) if perdida else "",
-                    "correo": correos.get((normalizar(grupo), clave)) or correos.get(("", clave), ""),
+                    "correo": ficha["correo"],
                 })
         alumnos.sort(key=lambda x: (x["grupo"], normalizar(x["alumno"]), x["siglas"]))
-        return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo}
+        bajas = [{"grupo": f["grupo"], "alumno": f["alumno"], "nombre": f["nombre"] or f["alumno"],
+                  "baja": f["baja"], "baja_por": f["baja_por"], "motivo": f["motivo_baja"]}
+                 for f in fichas.values() if f["baja"]]
+        bajas.sort(key=lambda b: (b["grupo"], normalizar(b["nombre"])))
+        return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo, "bajas": bajas}
 
-    # ---- correos del alumnado (solo el dato: WebPEC no envía nada)
+    # ---- fichas del alumnado: correos (solo el dato), nombres corregidos y bajas
 
-    def _leer_correos(self):
-        ruta = self.base / CORREOS
-        if not ruta.exists():
-            return []
-        with open(ruta, encoding="utf-8-sig", newline="") as f:
-            return list(csv.DictReader(f, delimiter=";"))
-
-    def _correos(self):
-        return {(normalizar(f["grupo"]), clave_alumno(f["alumno"])): f["correo"] for f in self._leer_correos()}
+    def _fichas(self):
+        return {clave_ficha(f["grupo"], f["alumno"]): f for f in leer_alumnado(self.base / ALUMNADO)}
 
     def importar_correos(self, nombre, datos, grupo=""):
         """Añade o actualiza correos desde un CSV o Excel (alumno y correo; grupo opcional)."""
         nuevos = extraer_correos(leer_tabla(nombre, datos))
-        actuales = {(normalizar(f["grupo"]), clave_alumno(f["alumno"])): f for f in self._leer_correos()}
+        fichas = self._fichas()
         resultado = {"leidos": len(nuevos), "nuevos": 0, "actualizados": 0}
         for g, alumno, correo in nuevos:
             g = g or (grupo or "").strip()
-            clave = (normalizar(g), clave_alumno(alumno))
-            if clave in actuales:
-                if actuales[clave]["correo"] != correo:
-                    actuales[clave]["correo"] = correo
+            clave = clave_ficha(g, alumno)
+            if clave in fichas:
+                if fichas[clave]["correo"] != correo:
+                    fichas[clave]["correo"] = correo
                     resultado["actualizados"] += 1
             else:
-                actuales[clave] = {"grupo": g, "alumno": alumno, "correo": correo}
+                fichas[clave] = dict({c: "" for c in CAMPOS_ALUMNADO}, grupo=g, alumno=alumno, correo=correo)
                 resultado["nuevos"] += 1
-        try:
-            with open(self.base / CORREOS, "w", encoding="utf-8-sig", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=["grupo", "alumno", "correo"], delimiter=";")
-                w.writeheader()
-                w.writerows(sorted(actuales.values(), key=lambda f: (f["grupo"], normalizar(f["alumno"]))))
-        except PermissionError:
-            raise ErrorPEC(f"No se puede escribir en {CORREOS}: ciérralo en Excel y vuelve a intentarlo")
+        escribir_alumnado(self.base / ALUMNADO, fichas.values())
         return resultado
 
-    @staticmethod
-    def _correo_de(correos, fila):
-        clave = clave_alumno(fila.get("alumno", ""))
-        return correos.get((normalizar(fila.get("grupo", "")), clave)) or correos.get(("", clave), "")
+    def _ficha_propia(self, fichas, grupo, alumno):
+        """La fila del alumno/a en su grupo (se crea si no existe); absorbe la que no tiene grupo."""
+        if not (grupo or "").strip() or not (alumno or "").strip():
+            raise ErrorPEC("Falta el grupo o el nombre del alumno/a")
+        clave = clave_ficha(grupo, alumno)
+        if clave not in fichas:
+            fichas[clave] = dict({c: "" for c in CAMPOS_ALUMNADO}, grupo=grupo.strip(), alumno=alumno.strip())
+        general = fichas.pop(clave_ficha("", alumno), None)
+        if general:
+            for c in ("nombre", "correo"):
+                fichas[clave][c] = fichas[clave][c] or general[c]
+        return fichas[clave]
+
+    def editar_alumno(self, grupo, alumno, apellidos, nombre, correo):
+        """Corrige a mano el nombre (para avisos y listados) o el correo de un alumno/a de un grupo."""
+        apellidos, nombre, correo = (re.sub(r"\s+", " ", x or "").strip(" ,") for x in (apellidos, nombre, correo))
+        if not apellidos:
+            raise ErrorPEC("Escribe al menos los apellidos")
+        if correo and not PATRON_CORREO.match(correo):
+            raise ErrorPEC(f"«{correo}» no es una dirección de correo válida")
+        fichas = self._fichas()
+        ficha = self._ficha_propia(fichas, grupo, alumno)
+        completo = f"{apellidos}, {nombre}" if nombre else apellidos
+        ficha["nombre"] = "" if completo == alumno.strip() else completo
+        ficha["correo"] = correo
+        escribir_alumnado(self.base / ALUMNADO, fichas.values())
+        return {"nombre": completo, "correo": correo}
+
+    def dar_de_baja(self, grupo, alumno, motivo=""):
+        """
+        El alumno/a desaparece de Alumnado y ya no recibe avisos nuevos aunque siga en los informes de
+        Raíces. Lo ya generado no se toca: devuelve sus avisos que siguen en Pendientes.
+        """
+        fichas = self._fichas()
+        ficha = self._ficha_propia(fichas, grupo, alumno)
+        ficha.update(baja=datetime.now().strftime("%Y-%m-%d %H:%M"), baja_por=self.usuario,
+                     motivo_baja=(motivo or "").strip())
+        escribir_alumnado(self.base / ALUMNADO, fichas.values())
+        clave = clave_ficha(grupo, alumno)
+        pendientes = [f["documento"] for f in leer_registro(self.base / REGISTRO)
+                      if not anulada(f) and clave_ficha(f["grupo"], f["alumno"]) == clave
+                      and list((self.base / PENDIENTES).glob(f"*/{glob_literal(f['documento'])}"))]
+        return {"nombre": ficha["nombre"] or ficha["alumno"], "pendientes": pendientes}
+
+    def recuperar_alumno(self, grupo, alumno):
+        """Deshace una baja (por si se dio por error)."""
+        fichas = self._fichas()
+        ficha = fichas.get(clave_ficha(grupo, alumno))
+        if not ficha or not ficha["baja"]:
+            raise ErrorPEC(f"{alumno} ({grupo}) no está dado/a de baja")
+        ficha.update(baja="", baja_por="", motivo_baja="")
+        escribir_alumnado(self.base / ALUMNADO, fichas.values())
+        return {"nombre": ficha["nombre"] or ficha["alumno"]}
 
     # ---- envío por correo (lo prepara el programa de correo; WebPEC no envía nada)
 
@@ -1622,8 +1724,9 @@ class Motor:
         if fila is None:
             raise ErrorPEC(f"{ruta.name} no está en el registro")
         firma = self.hoja().firma(fila["profesor"]) or nombre_completo(fila["profesor"])
-        asunto, html = texto_correo(fila, firma, self.config())
-        return ruta, fila, self._correo_de(self._correos(), fila), asunto, html
+        ficha = ficha_de(self._fichas(), fila["grupo"], fila["alumno"])
+        asunto, html = texto_correo(fila, firma, self.config(), ficha["nombre"])
+        return ruta, fila, ficha["correo"], asunto, html
 
     def preparar_correos(self, carpeta, rutas):
         """Abre en Thunderbird un correo por aviso, con el PDF adjunto y el texto ya escritos."""

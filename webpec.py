@@ -278,6 +278,17 @@ class Manejador(BaseHTTPRequestHandler):
             r = m.importar_correos(q.get("nombre", ""), d, q.get("grupo", ""))
             return r, "Importar correos del alumnado", \
                 f"{q.get('nombre', '')}: {r['nuevos']} nuevos, {r['actualizados']} actualizados"
+        if ruta == "/api/alumno/editar":
+            r = m.editar_alumno(d.get("grupo", ""), d.get("alumno", ""), d.get("apellidos", ""),
+                                d.get("nombre", ""), d.get("correo", ""))
+            return r, "Editar alumno/a", f"{d.get('alumno')} ({d.get('grupo')}): {r['nombre']}, {r['correo'] or 'sin correo'}"
+        if ruta == "/api/alumno/baja":
+            r = m.dar_de_baja(d.get("grupo", ""), d.get("alumno", ""), d.get("motivo", ""))
+            return r, "Dar de baja a alumno/a", f"{d.get('alumno')} ({d.get('grupo')})" + \
+                (f" — motivo: {d.get('motivo')}" if d.get("motivo") else "")
+        if ruta == "/api/alumno/recuperar":
+            m.recuperar_alumno(d.get("grupo", ""), d.get("alumno", ""))
+            return {"ok": True}, "Recuperar alumno/a dado de baja", f"{d.get('alumno')} ({d.get('grupo')})"
         if ruta == "/api/datos/importar":
             r = m.importar_datos(d)
             return r, "Importar datos", f"{q.get('nombre', '')}: {r['ficheros']} ficheros; copia {r['copia']}"

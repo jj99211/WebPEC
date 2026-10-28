@@ -148,11 +148,22 @@
         <table class="tabla" id="tabla-alumnado">
           <thead>
             <tr><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num">FI</th><th class="num">% horas</th>
-              <th class="num">7,5 %</th><th class="num">15 %</th><th>Situación</th><th>Informe</th><th>Profesor/a</th></tr>
+              <th class="num">7,5 %</th><th class="num">15 %</th><th>Situación</th><th>Informe</th><th>Profesor/a</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
+      <details class="plegable" id="plegable-bajas">
+        <summary>Alumnado dado de baja (<span id="contador-bajas">0</span>)</summary>
+        <p class="nota">No aparecen en la lista ni reciben avisos nuevos aunque sigan en los informes de Raíces. Sus avisos
+          ya generados se conservan. «Recuperar» deshace una baja dada por error.</p>
+        <div class="tarjeta sin-relleno">
+          <table class="tabla" id="tabla-bajas">
+            <thead><tr><th>Alumno/a</th><th>Grupo</th><th>Baja</th><th>Motivo</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <!-- ======================================================= REGISTRO -->

@@ -822,7 +822,7 @@ $("#boton-nuevo-profesor").addEventListener("click", async () => {
 
 // ------------------------------------------------------------ alumnado ---
 
-let alumnado = { alumnos: [], informes: 0, sin_modulo: [] };
+let alumnado = { alumnos: [], informes: 0, sin_modulo: [], bajas: [] };
 
 const SITUACIONES = {
   sin_avisos: () => '<span class="chip ok">Sin avisos</span>',
@@ -833,7 +833,7 @@ const SITUACIONES = {
 
 async function cargarAlumnado() {
   const cuerpo = $("#tabla-alumnado tbody");
-  if (!alumnado.alumnos.length) cuerpo.innerHTML = '<tr><td colspan="10" class="cargando">Leyendo los informes procesados…</td></tr>';
+  if (!alumnado.alumnos.length) cuerpo.innerHTML = '<tr><td colspan="11" class="cargando">Leyendo los informes procesados…</td></tr>';
   try { alumnado = await api("/api/alumnado"); } catch (e) { error(e); }
   for (const [id, campo, todos] of [["#filtro-al-grupo", "grupo", "Todos los grupos"],
     ["#filtro-al-modulo", "modulo", "Todos los módulos"], ["#filtro-al-profesor", "profesor", "Todos los profesores"]]) {
@@ -851,23 +851,103 @@ function pintarAlumnado() {
   const texto = $("#filtro-al-texto").value.trim().toLowerCase();
   const filas = alumnado.alumnos.filter(a => (!grupo || a.grupo === grupo) && (!modulo || a.modulo === modulo) &&
     (!profesor || a.profesor === profesor) && (!estado || a.estado === estado) &&
-    (!texto || `${a.alumno} ${a.correo}`.toLowerCase().includes(texto)));
+    (!texto || `${a.alumno} ${a.en_raices} ${a.correo}`.toLowerCase().includes(texto)));
   $("#tabla-alumnado tbody").innerHTML = filas.length ? filas.map(a => `<tr>
       <td>${esc(a.alumno)}${a.correo ? `<span class="motivo">${esc(a.correo)}</span>` : ""}</td>
       <td>${esc(a.grupo)}</td><td class="secundario" title="${esc(a.siglas)}">${esc(a.modulo)}</td>
       <td class="num">${a.fi}</td><td class="num">${esc(a.porcentaje)} %</td>
       <td class="num">${esc(a.umbral_75)}</td><td class="num">${esc(a.umbral_15)}</td>
-      <td>${SITUACIONES[a.estado](a)}</td><td>${esc(a.informe)}</td><td class="secundario">${esc(a.profesor)}</td></tr>`).join("")
-    : `<tr><td colspan="10" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
+      <td>${SITUACIONES[a.estado](a)}</td><td>${esc(a.informe)}</td><td class="secundario">${esc(a.profesor)}</td>
+      <td class="acciones-fila" data-grupo="${esc(a.grupo)}" data-alumno="${esc(a.en_raices)}">
+        <button class="enlace" data-editar>Editar</button> <button class="enlace peligro" data-baja>Baja</button></td></tr>`).join("")
+    : `<tr><td colspan="11" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
         : "No hay informes procesados. La situación se calcula con los informes que se conservan en «Informes ya procesados»."}</td></tr>`;
   const con = n => alumnado.alumnos.filter(a => a.estado === n).length;
   $("#nota-alumnado").innerHTML = `Según el último informe procesado de cada módulo (${plural(alumnado.informes, "módulo", "módulos")}):
     ${plural(alumnado.alumnos.length, "alumno/a", "alumnos/as")} · ${con("aviso")} con aviso · ${con("perdida")} con pérdida
     ${con("supera") ? `· <b>${con("supera")} superan el 7,5 % sin aviso vigente</b>` : ""}` +
     (alumnado.sin_modulo.length ? `<br>⚠ Sin datos del módulo en la hoja: ${esc(alumnado.sin_modulo.join(", "))}` : "");
+  $("#contador-bajas").textContent = alumnado.bajas.length;
+  $("#tabla-bajas tbody").innerHTML = alumnado.bajas.length ? alumnado.bajas.map(b => `<tr>
+      <td>${esc(b.nombre)}</td><td>${esc(b.grupo)}</td>
+      <td class="secundario">${esc(fechaHora(b.baja))}${b.baja_por ? `<span class="motivo">${porQuien(b.baja_por).trim()}</span>` : ""}</td>
+      <td class="secundario">${esc(b.motivo)}</td>
+      <td class="acciones-fila" data-grupo="${esc(b.grupo)}" data-alumno="${esc(b.alumno)}">
+        <button class="enlace" data-recuperar>Recuperar</button></td></tr>`).join("")
+    : '<tr><td colspan="5" class="vacio">Nadie dado de baja.</td></tr>';
 }
 ["#filtro-al-grupo", "#filtro-al-modulo", "#filtro-al-profesor", "#filtro-al-estado"].forEach(s => $(s).addEventListener("change", pintarAlumnado));
 $("#filtro-al-texto").addEventListener("input", pintarAlumnado);
+
+/** Separa «Apellidos, Nombre» para rellenar el formulario. */
+function partesNombre(completo) {
+  const i = completo.indexOf(",");
+  return i < 0 ? [completo.trim(), ""] : [completo.slice(0, i).trim(), completo.slice(i + 1).trim()];
+}
+
+async function editarAlumno(grupo, enRaices) {
+  const a = alumnado.alumnos.find(x => x.grupo === grupo && x.en_raices === enRaices);
+  const [apellidos, nombre] = partesNombre(a.alumno);
+  const ok = await dialogo("Editar alumno/a",
+    `<p>${esc(grupo)} · en Raíces: <b>${esc(enRaices)}</b></p>
+     <label class="campo-motivo">Apellidos<input id="alumno-apellidos" value="${esc(apellidos)}"></label>
+     <label class="campo-motivo">Nombre<input id="alumno-nombre" value="${esc(nombre)}"></label>
+     <label class="campo-motivo">Correo electrónico<input id="alumno-correo" type="email" value="${esc(a.correo)}"
+       placeholder="vacío: sin correo"></label>
+     <p class="nota">El nombre corregido se usa en los listados, en los correos y en los avisos que se generen a partir de
+       ahora (los ya generados no cambian). Los informes de Raíces se siguen reconociendo con el nombre original.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Guardar", clase: "principal", valor: true, requiere: "#alumno-apellidos" }]);
+  if (!ok) return;
+  try {
+    await api("/api/alumno/editar", { grupo, alumno: enRaices, apellidos: $("#alumno-apellidos").value,
+      nombre: $("#alumno-nombre").value, correo: $("#alumno-correo").value });
+    tostada("Datos del alumno/a guardados", "ok");
+    cargarAlumnado();
+  } catch (e) { error(e); }
+}
+
+async function darDeBaja(grupo, enRaices) {
+  const a = alumnado.alumnos.find(x => x.grupo === grupo && x.en_raices === enRaices);
+  const ok = await dialogo("Dar de baja",
+    `<p><b>${esc(a.alumno)}</b> (${esc(grupo)}) dejará de aparecer en Alumnado y <b>no recibirá avisos nuevos</b> en
+       ningún módulo de ${esc(grupo)}, aunque siga saliendo en los informes de Raíces.</p>
+     <p class="nota">Los avisos ya generados y el registro se conservan. Si se da de baja por error, se puede recuperar
+       en «Alumnado dado de baja», al final de esta pestaña.</p>
+     <label class="campo-motivo">Motivo (opcional)<input id="motivo-baja" maxlength="200"
+       placeholder="p. ej. Baja en el centro el 15/10/2026"></label>
+     <label class="casilla-confirmar"><input type="checkbox" id="confirmar-baja"> Confirmo que ya no está matriculado/a
+       en ${esc(grupo)}.</label>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Dar de baja", clase: "peligro", valor: true, requiere: "#confirmar-baja" }]);
+  if (!ok) return;
+  try {
+    const r = await api("/api/alumno/baja", { grupo, alumno: enRaices, motivo: $("#motivo-baja").value });
+    tostada(`${r.nombre}: dado/a de baja`, "ok");
+    if (r.pendientes.length) {
+      await dialogo("Avisos pendientes de entregar",
+        `<p>${esc(r.nombre)} tiene ${plural(r.pendientes.length, "aviso", "avisos")} en <b>Pendientes de entregar</b>:</p>
+         <ul class="lista-modal">${r.pendientes.map(d => `<li>${esc(d)}</li>`).join("")}</ul>
+         <p class="nota">Si ya no se van a entregar, anúlalos desde la pestaña Avisos (motivo: baja en el centro).</p>`,
+        [{ texto: "Entendido", clase: "principal", valor: true }]);
+    }
+    cargarAlumnado();
+    contarPendientes();
+  } catch (e) { error(e); }
+}
+
+$("#vista-alumnado").addEventListener("click", async ev => {
+  const celda = ev.target.closest("[data-alumno]");
+  if (!celda || ev.target.tagName !== "BUTTON") return;
+  const { grupo, alumno } = celda.dataset;
+  if ("editar" in ev.target.dataset) editarAlumno(grupo, alumno);
+  if ("baja" in ev.target.dataset) darDeBaja(grupo, alumno);
+  if ("recuperar" in ev.target.dataset) {
+    try {
+      await api("/api/alumno/recuperar", { grupo, alumno });
+      tostada("Baja deshecha: vuelve a la lista y a recibir avisos", "ok");
+      cargarAlumnado();
+    } catch (e) { error(e); }
+  }
+});
 
 $("#boton-importar-correos").addEventListener("click", async () => {
   const ok = await dialogo("Importar correos del alumnado",
