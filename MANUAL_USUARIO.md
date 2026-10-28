@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.20*
+Manual de la versión 3.21*
 
 ---
 
@@ -162,13 +162,15 @@ En cada fila:
 - **Editar**: corrige a mano el nombre (apellidos y nombre) o el correo del alumno/a. El nombre corregido se usa en
   los listados, en los correos y en los avisos que se generen a partir de entonces (los ya generados no cambian);
   los informes de Raíces se siguen reconociendo con el nombre original.
-- **Baja**: para quien se ha dado de baja en el centro pero sigue saliendo en los informes de Raíces. Desaparece de
-  la lista y **no vuelve a recibir avisos** en ningún módulo de su grupo, aunque siga en los informes. Hay que
-  confirmarlo y se puede anotar el motivo. Sus avisos ya generados y el registro se conservan: si le quedan avisos
-  en Pendientes, WebPEC lo indica para anularlos si ya no se van a entregar.
+- **Baja**: para quien sigue saliendo en los informes de Raíces pero ya no cursa uno o varios módulos (baja en el
+  centro, anulación de matrícula, convalidación…). Se marcan los módulos (el de la fila viene marcado) o **Todos sus
+  módulos del grupo**, que vale también para los módulos de informes futuros (baja en el centro). En esos módulos
+  desaparece de la lista y **no vuelve a recibir avisos**, aunque siga en los informes; en los demás, todo sigue
+  igual. Se puede anotar el motivo. Sus avisos ya generados y el registro se conservan: si le quedan avisos de esos
+  módulos en Pendientes, WebPEC lo indica para anularlos si ya no se van a entregar.
 
-Al final de la pestaña, **Alumnado dado de baja** lista las bajas (con fecha, quién la dio y motivo); **Recuperar**
-deshace una baja dada por error.
+Al final de la pestaña, **Alumnado dado de baja** lista las bajas (módulo o «Todos los módulos», fecha, quién la dio y
+motivo); **Recuperar** deshace una baja dada por error.
 
 ### Registro
 
@@ -218,7 +220,7 @@ Cierra WebPEC de forma ordenada.
 - **FI ≥ 15 %**, con aviso en un informe anterior y con más faltas que entonces → **Confirmación de pérdida**.
   Si no ha acumulado más faltas desde el aviso, se espera al siguiente informe.
 - Ningún documento se genera dos veces para el mismo alumno, grupo, módulo y tipo.
-- El alumnado dado de baja en la pestaña Alumnado no recibe avisos nuevos.
+- El alumnado dado de baja en un módulo (pestaña Alumnado) no recibe avisos nuevos en ese módulo.
 
 ## 6. Dónde se guardan los datos
 
@@ -236,7 +238,8 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | `registro_avisos.csv` | Registro de avisos emitidos (no borrar filas a mano) |
 | `configuracion.ini` | Configuración |
 | `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos y antes de poner al día los datos de una versión anterior |
-| `alumnado.csv` | Correos del alumnado, nombres corregidos a mano y bajas |
+| `alumnado.csv` | Correos del alumnado y nombres corregidos a mano |
+| `bajas_alumnado.csv` | Alumnado dado de baja (por módulo o en todos los de su grupo) |
 | `actividad.csv` | Quién ha hecho cada acción y cuándo |
 | `VERSION_DATOS`, `migraciones.log` | Formato de los datos e historial de sus actualizaciones |
 

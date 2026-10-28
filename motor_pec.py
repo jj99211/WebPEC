@@ -15,7 +15,8 @@ Datos (en DATOS/, dentro de la carpeta del programa; se crean solos si no existe
   COPIAS_SEGURIDAD/              copias antes de vaciar el registro o la hoja y antes de migrar los datos
   VERSION_DATOS                  formato de los datos (lo pone al día migrar_datos al arrancar)
   actividad.csv                  quién ha hecho cada acción y cuándo
-  alumnado.csv                   correos del alumnado, nombres corregidos a mano y bajas
+  alumnado.csv                   correos del alumnado y nombres corregidos a mano
+  bajas_alumnado.csv             alumnado dado de baja en un módulo o en todos los de su grupo
 
 Reglas (valor de referencia: columna FI, faltas injustificadas):
   - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
@@ -71,11 +72,12 @@ VERSION_DATOS = "VERSION_DATOS"
 LOG_MIGRACIONES = "migraciones.log"
 ACTIVIDAD = "actividad.csv"
 ALUMNADO = "alumnado.csv"
+BAJAS = "bajas_alumnado.csv"
 CORREOS_4 = "correos_alumnado.csv"  # el fichero de correos del formato de datos 4
 
 # Formato de los datos. 2: WebPEC 2.x (datos sueltos en la carpeta del programa);
 # 3: carpeta DATOS/ y registro con anulaciones; 4: registro con quién genera, entrega y anula.
-FORMATO_DATOS = 5
+FORMATO_DATOS = 6
 # Lo que en la 2.x estaba en la carpeta del programa y en la 3 va dentro de DATOS/
 DATOS_2X = [CONFIGURACION, HOJA_MODULOS, REGISTRO, NUEVOS, PROCESAR, PROCESADOS,
             PENDIENTES, REALIZADOS, COPIAS]
@@ -589,11 +591,11 @@ def extraer_correos(filas):
 
 
 # ------------------------------------------------- fichas del alumnado ---
-# Una fila por alumno/a y grupo con lo que Raíces no da o da mal: correo, nombre corregido a mano y baja.
+# Una fila por alumno/a y grupo con lo que Raíces no da o da mal: correo y nombre corregido a mano.
 # «alumno» es el nombre tal como viene en Raíces (o en el fichero de correos); con grupo vacío, la fila
 # vale para cualquier grupo (correos importados sin grupo).
 
-CAMPOS_ALUMNADO = ["grupo", "alumno", "nombre", "correo", "baja", "baja_por", "motivo_baja"]
+CAMPOS_ALUMNADO = ["grupo", "alumno", "nombre", "correo"]
 
 
 def leer_alumnado(ruta):
@@ -603,16 +605,45 @@ def leer_alumnado(ruta):
         return [{c: (fila.get(c) or "") for c in CAMPOS_ALUMNADO} for fila in csv.DictReader(f, delimiter=";")]
 
 
-def escribir_alumnado(ruta, filas):
+def escribir_tabla(ruta, campos, filas, orden):
     temporal = ruta.with_name(ruta.name + ".tmp")
     try:
         with open(temporal, "w", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=CAMPOS_ALUMNADO, delimiter=";", extrasaction="ignore")
+            w = csv.DictWriter(f, fieldnames=campos, delimiter=";", extrasaction="ignore")
             w.writeheader()
-            w.writerows(sorted(filas, key=lambda f: (f["grupo"], normalizar(f["alumno"]))))
+            w.writerows(sorted(filas, key=orden))
         os.replace(temporal, ruta)
     except PermissionError:
-        raise ErrorPEC(f"No se puede escribir en {ALUMNADO}: ciérralo en Excel y vuelve a intentarlo")
+        raise ErrorPEC(f"No se puede escribir en {ruta.name}: ciérralo en Excel y vuelve a intentarlo")
+
+
+def escribir_alumnado(ruta, filas):
+    escribir_tabla(ruta, CAMPOS_ALUMNADO, filas, lambda f: (f["grupo"], normalizar(f["alumno"])))
+
+
+# Bajas: una fila por alumno/a, grupo y módulo (siglas); módulo vacío = todos los de su grupo, también los
+# de informes futuros.
+CAMPOS_BAJAS = ["grupo", "alumno", "modulo", "fecha", "por", "motivo"]
+
+
+def leer_bajas(ruta):
+    if not ruta.exists():
+        return []
+    with open(ruta, encoding="utf-8-sig", newline="") as f:
+        return [{c: (fila.get(c) or "") for c in CAMPOS_BAJAS} for fila in csv.DictReader(f, delimiter=";")]
+
+
+def escribir_bajas(ruta, filas):
+    escribir_tabla(ruta, CAMPOS_BAJAS, filas, lambda f: (f["grupo"], normalizar(f["alumno"]), f["modulo"]))
+
+
+def clave_baja(grupo, alumno, siglas=""):
+    return clave_ficha(grupo, alumno) + (normalizar(siglas or ""),)
+
+
+def de_baja(claves, grupo, alumno, siglas):
+    """¿Está de baja en ese módulo (o en todos los de su grupo)? claves: {clave_baja} de las bajas."""
+    return clave_baja(grupo, alumno, siglas) in claves or clave_baja(grupo, alumno) in claves
 
 
 def clave_ficha(grupo, alumno):
@@ -623,8 +654,7 @@ def ficha_de(fichas, grupo, alumno):
     """Datos de un alumno/a en su grupo; nombre y correo pueden venir de una fila sin grupo."""
     propia = fichas.get(clave_ficha(grupo, alumno), {})
     general = fichas.get(clave_ficha("", alumno), {})
-    ficha = {c: propia.get(c, "") for c in ("baja", "baja_por", "motivo_baja")}
-    ficha.update({c: propia.get(c) or general.get(c, "") for c in ("nombre", "correo")})
+    ficha = {c: propia.get(c) or general.get(c, "") for c in ("nombre", "correo")}
     ficha["nombre"] = ficha["nombre"] or alumno
     return ficha
 
@@ -776,7 +806,26 @@ def migrar_4_a_5(datos, antigua):
     return [f"{CORREOS_4} pasa a {ALUMNADO} (correos, nombres corregidos y bajas del alumnado)"]
 
 
-MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4, 4: migrar_4_a_5}
+def migrar_5_a_6(datos, antigua):
+    """Las bajas pasan de alumnado.csv (todo el grupo) a bajas_alumnado.csv (por módulo o de todo el grupo)."""
+    ruta = datos / ALUMNADO
+    if not ruta.exists():
+        return []
+    with open(ruta, encoding="utf-8-sig", newline="") as f:
+        filas = list(csv.DictReader(f, delimiter=";"))
+    if not filas or "baja" not in filas[0]:
+        return []
+    bajas = leer_bajas(datos / BAJAS)
+    hay = {clave_baja(b["grupo"], b["alumno"], b["modulo"]) for b in bajas}
+    nuevas = [{"grupo": f["grupo"], "alumno": f["alumno"], "modulo": "", "fecha": f["baja"],
+               "por": f.get("baja_por") or "", "motivo": f.get("motivo_baja") or ""}
+              for f in filas if f.get("baja") and clave_baja(f["grupo"], f["alumno"]) not in hay]
+    escribir_bajas(datos / BAJAS, bajas + nuevas)  # primero las bajas: así se puede repetir sin perder nada
+    escribir_alumnado(ruta, [{c: (f.get(c) or "") for c in CAMPOS_ALUMNADO} for f in filas])
+    return [f"Bajas del alumnado: pasan a {BAJAS} ({len(nuevas)}, en todos los módulos de su grupo)"]
+
+
+MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4, 4: migrar_4_a_5, 5: migrar_5_a_6}
 
 
 def migrar_datos(datos, antigua=None):
@@ -1199,14 +1248,14 @@ class Motor:
         leidos.sort(key=lambda r: (r[1]["fecha"], r[1]["unidad"], r[1]["modulo"]))
 
         resumen = {"informes": [], "avisos": 0, "perdidas": 0, "mensajes": []}
-        fichas = self._fichas()
+        fichas, bajas = self._fichas(), self._claves_bajas()
         for ruta, informe in leidos:
             modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
             firma = hoja.firma(informe["profesor"])
             if modulo is None or firma is None:
                 continue
             situacion = [a for a in evaluar(informe, modulo, registro)
-                         if not ficha_de(fichas, informe["unidad"], a["alumno"])["baja"]]
+                         if not de_baja(bajas, informe["unidad"], a["alumno"], modulo["siglas"])]
             nuevos = [a for a in situacion if a["tipo"]]
             documentos = []
             if nuevos:
@@ -1586,7 +1635,7 @@ class Motor:
         """
         hoja = self.hoja()
         registro = leer_registro(self.base / REGISTRO)
-        fichas = self._fichas()
+        fichas, claves_bajas = self._fichas(), self._claves_bajas()
         ultimos = {}
         for ruta in self._pdfs(PROCESADOS):
             informe = self._informe_procesado(ruta)
@@ -1603,9 +1652,9 @@ class Motor:
                 continue
             grupo, siglas = informe["unidad"], modulo["siglas"]
             for a in informe["alumnos"]:
-                ficha = ficha_de(fichas, grupo, a["alumno"])
-                if ficha["baja"]:
+                if de_baja(claves_bajas, grupo, a["alumno"], siglas):
                     continue
+                ficha = ficha_de(fichas, grupo, a["alumno"])
                 aviso = buscar_en_registro(registro, grupo, siglas, a["alumno"], AVISO)
                 perdida = buscar_en_registro(registro, grupo, siglas, a["alumno"], PEC)
                 estado = "perdida" if perdida else "aviso" if aviso else \
@@ -1624,10 +1673,12 @@ class Motor:
                     "correo": ficha["correo"],
                 })
         alumnos.sort(key=lambda x: (x["grupo"], normalizar(x["alumno"]), x["siglas"]))
-        bajas = [{"grupo": f["grupo"], "alumno": f["alumno"], "nombre": f["nombre"] or f["alumno"],
-                  "baja": f["baja"], "baja_por": f["baja_por"], "motivo": f["motivo_baja"]}
-                 for f in fichas.values() if f["baja"]]
-        bajas.sort(key=lambda b: (b["grupo"], normalizar(b["nombre"])))
+        nombres_modulo = {(normalizar(m["unidad"]), normalizar(m["siglas"])): m["nombre"] for m in hoja.modulos}
+        bajas = [dict(b, nombre=ficha_de(fichas, b["grupo"], b["alumno"])["nombre"],
+                      nombre_modulo=nombres_modulo.get((normalizar(b["grupo"]), normalizar(b["modulo"])), b["modulo"])
+                      if b["modulo"] else "")
+                 for b in leer_bajas(self.base / BAJAS)]
+        bajas.sort(key=lambda b: (b["grupo"], normalizar(b["nombre"]), b["modulo"]))
         return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo, "bajas": bajas}
 
     # ---- fichas del alumnado: correos (solo el dato), nombres corregidos y bajas
@@ -1681,31 +1732,48 @@ class Motor:
         escribir_alumnado(self.base / ALUMNADO, fichas.values())
         return {"nombre": completo, "correo": correo}
 
-    def dar_de_baja(self, grupo, alumno, motivo=""):
+    def _claves_bajas(self):
+        return {clave_baja(b["grupo"], b["alumno"], b["modulo"]) for b in leer_bajas(self.base / BAJAS)}
+
+    def dar_de_baja(self, grupo, alumno, modulos, motivo=""):
         """
-        El alumno/a desaparece de Alumnado y ya no recibe avisos nuevos aunque siga en los informes de
-        Raíces. Lo ya generado no se toca: devuelve sus avisos que siguen en Pendientes.
+        Baja en los módulos elegidos (siglas) o, con modulos vacío, en todos los de su grupo (también los de
+        informes futuros): ahí desaparece de Alumnado y ya no recibe avisos nuevos aunque siga en los informes
+        de Raíces. Lo ya generado no se toca: devuelve sus avisos de esos módulos que siguen en Pendientes.
         """
-        fichas = self._fichas()
-        ficha = self._ficha_propia(fichas, grupo, alumno)
-        ficha.update(baja=datetime.now().strftime("%Y-%m-%d %H:%M"), baja_por=self.usuario,
-                     motivo_baja=(motivo or "").strip())
-        escribir_alumnado(self.base / ALUMNADO, fichas.values())
+        grupo, alumno = (grupo or "").strip(), (alumno or "").strip()
+        if not grupo or not alumno:
+            raise ErrorPEC("Falta el grupo o el nombre del alumno/a")
+        modulos = sorted({m.strip() for m in modulos or [] if m.strip()})
+        ruta = self.base / BAJAS
+        bajas = leer_bajas(ruta)
         clave = clave_ficha(grupo, alumno)
+        propias = [b for b in bajas if clave_ficha(b["grupo"], b["alumno"]) == clave]
+        if any(not b["modulo"] for b in propias):
+            raise ErrorPEC(f"{alumno} ya está de baja en todos los módulos de {grupo}")
+        if not modulos:  # todos: sustituye a las bajas de módulos sueltos
+            bajas = [b for b in bajas if b not in propias]
+        ya = {normalizar(b["modulo"]) for b in propias}
+        fila = {"grupo": grupo, "alumno": alumno, "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "por": self.usuario, "motivo": (motivo or "").strip()}
+        bajas += [dict(fila, modulo=m) for m in (modulos or [""]) if normalizar(m) not in ya or not modulos]
+        escribir_bajas(ruta, bajas)
+        elegidos = {normalizar(m) for m in modulos}
         pendientes = [f["documento"] for f in leer_registro(self.base / REGISTRO)
                       if not anulada(f) and clave_ficha(f["grupo"], f["alumno"]) == clave
+                      and (not elegidos or normalizar(f["modulo"]) in elegidos)
                       and list((self.base / PENDIENTES).glob(f"*/{glob_literal(f['documento'])}"))]
-        return {"nombre": ficha["nombre"] or ficha["alumno"], "pendientes": pendientes}
+        return {"nombre": ficha_de(self._fichas(), grupo, alumno)["nombre"], "pendientes": pendientes}
 
-    def recuperar_alumno(self, grupo, alumno):
-        """Deshace una baja (por si se dio por error)."""
-        fichas = self._fichas()
-        ficha = fichas.get(clave_ficha(grupo, alumno))
-        if not ficha or not ficha["baja"]:
-            raise ErrorPEC(f"{alumno} ({grupo}) no está dado/a de baja")
-        ficha.update(baja="", baja_por="", motivo_baja="")
-        escribir_alumnado(self.base / ALUMNADO, fichas.values())
-        return {"nombre": ficha["nombre"] or ficha["alumno"]}
+    def recuperar_alumno(self, grupo, alumno, modulo=""):
+        """Deshace una baja (por si se dio por error): la de ese módulo o, con modulo vacío, la de todos."""
+        ruta = self.base / BAJAS
+        bajas = leer_bajas(ruta)
+        quedan = [b for b in bajas if clave_baja(b["grupo"], b["alumno"], b["modulo"]) != clave_baja(grupo, alumno, modulo)]
+        if len(quedan) == len(bajas):
+            raise ErrorPEC(f"{alumno} ({grupo}) no está dado/a de baja ahí")
+        escribir_bajas(ruta, quedan)
+        return {"nombre": ficha_de(self._fichas(), grupo, alumno)["nombre"]}
 
     # ---- envío por correo (lo prepara el programa de correo; WebPEC no envía nada)
 

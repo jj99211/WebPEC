@@ -858,8 +858,8 @@ function pintarAlumnado() {
       <td class="num">${a.fi}</td><td class="num">${esc(a.porcentaje)} %</td>
       <td class="num">${esc(a.umbral_75)}</td><td class="num">${esc(a.umbral_15)}</td>
       <td>${SITUACIONES[a.estado](a)}</td><td>${esc(a.informe)}</td><td class="secundario">${esc(a.profesor)}</td>
-      <td class="acciones-fila" data-grupo="${esc(a.grupo)}" data-alumno="${esc(a.en_raices)}">
-        <button class="enlace" data-editar>Editar</button> <button class="enlace peligro" data-baja>Baja</button></td></tr>`).join("")
+      <td class="acciones-fila apiladas" data-grupo="${esc(a.grupo)}" data-alumno="${esc(a.en_raices)}" data-siglas="${esc(a.siglas)}">
+        <button class="enlace" data-editar>Editar</button><button class="enlace peligro" data-baja>Baja</button></td></tr>`).join("")
     : `<tr><td colspan="11" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
         : "No hay informes procesados. La situación se calcula con los informes que se conservan en «Informes ya procesados»."}</td></tr>`;
   const con = n => alumnado.alumnos.filter(a => a.estado === n).length;
@@ -870,11 +870,12 @@ function pintarAlumnado() {
   $("#contador-bajas").textContent = alumnado.bajas.length;
   $("#tabla-bajas tbody").innerHTML = alumnado.bajas.length ? alumnado.bajas.map(b => `<tr>
       <td>${esc(b.nombre)}</td><td>${esc(b.grupo)}</td>
-      <td class="secundario">${esc(fechaHora(b.baja))}${b.baja_por ? `<span class="motivo">${porQuien(b.baja_por).trim()}</span>` : ""}</td>
+      <td>${b.modulo ? `<span class="secundario" title="${esc(b.modulo)}">${esc(b.nombre_modulo)}</span>` : "<b>Todos los módulos</b>"}</td>
+      <td class="secundario">${esc(fechaHora(b.fecha))}${b.por ? `<span class="motivo">${porQuien(b.por).trim()}</span>` : ""}</td>
       <td class="secundario">${esc(b.motivo)}</td>
-      <td class="acciones-fila" data-grupo="${esc(b.grupo)}" data-alumno="${esc(b.alumno)}">
+      <td class="acciones-fila" data-grupo="${esc(b.grupo)}" data-alumno="${esc(b.alumno)}" data-siglas="${esc(b.modulo)}">
         <button class="enlace" data-recuperar>Recuperar</button></td></tr>`).join("")
-    : '<tr><td colspan="5" class="vacio">Nadie dado de baja.</td></tr>';
+    : '<tr><td colspan="6" class="vacio">Nadie dado de baja.</td></tr>';
 }
 ["#filtro-al-grupo", "#filtro-al-modulo", "#filtro-al-profesor", "#filtro-al-estado"].forEach(s => $(s).addEventListener("change", pintarAlumnado));
 $("#filtro-al-texto").addEventListener("input", pintarAlumnado);
@@ -906,27 +907,34 @@ async function editarAlumno(grupo, enRaices) {
   } catch (e) { error(e); }
 }
 
-async function darDeBaja(grupo, enRaices) {
-  const a = alumnado.alumnos.find(x => x.grupo === grupo && x.en_raices === enRaices);
+async function darDeBaja(grupo, enRaices, siglas) {
+  const filas = alumnado.alumnos.filter(x => x.grupo === grupo && x.en_raices === enRaices);
+  const nombre = filas[0].alumno;
+  const casillas = filas.map(x => `<label class="casilla-modulo"><input type="checkbox" name="modulo-baja"
+      value="${esc(x.siglas)}" ${x.siglas === siglas ? "checked" : ""}><span>${esc(x.modulo)} <span class="secundario">(${esc(x.siglas)})</span></span></label>`).join("");
   const ok = await dialogo("Dar de baja",
-    `<p><b>${esc(a.alumno)}</b> (${esc(grupo)}) dejará de aparecer en Alumnado y <b>no recibirá avisos nuevos</b> en
-       ningún módulo de ${esc(grupo)}, aunque siga saliendo en los informes de Raíces.</p>
-     <p class="nota">Los avisos ya generados y el registro se conservan. Si se da de baja por error, se puede recuperar
-       en «Alumnado dado de baja», al final de esta pestaña.</p>
+    `<p><b>${esc(nombre)}</b> (${esc(grupo)}) dejará de aparecer en Alumnado y <b>no recibirá avisos nuevos</b> en los
+       módulos que marques, aunque siga saliendo en los informes de Raíces.</p>
+     <div class="lista-modulos">${casillas}
+       <label class="casilla-modulo"><input type="checkbox" id="baja-todos"><span><b>Todos sus módulos de ${esc(grupo)}</b>
+         <span class="secundario">(baja en el centro: también los de informes futuros)</span></span></label></div>
+     <p class="nota">Los avisos ya generados y el registro se conservan. Si te equivocas, se puede recuperar en
+       «Alumnado dado de baja», al final de esta pestaña.</p>
      <label class="campo-motivo">Motivo (opcional)<input id="motivo-baja" maxlength="200"
-       placeholder="p. ej. Baja en el centro el 15/10/2026"></label>
-     <label class="casilla-confirmar"><input type="checkbox" id="confirmar-baja"> Confirmo que ya no está matriculado/a
-       en ${esc(grupo)}.</label>`,
-    [{ texto: "Cancelar", valor: false }, { texto: "Dar de baja", clase: "peligro", valor: true, requiere: "#confirmar-baja" }]);
+       placeholder="p. ej. Baja en el centro el 15/10/2026, convalidación…"></label>
+     <input type="hidden" id="baja-elegidos" value="si">`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Dar de baja", clase: "peligro", valor: true, requiere: "#baja-elegidos" }]);
   if (!ok) return;
+  const todos = $("#baja-todos").checked;
+  const modulos = todos ? [] : [...document.querySelectorAll("[name=modulo-baja]:checked")].map(c => c.value);
   try {
-    const r = await api("/api/alumno/baja", { grupo, alumno: enRaices, motivo: $("#motivo-baja").value });
-    tostada(`${r.nombre}: dado/a de baja`, "ok");
+    const r = await api("/api/alumno/baja", { grupo, alumno: enRaices, modulos, motivo: $("#motivo-baja").value });
+    tostada(`${r.nombre}: dado/a de baja en ${todos ? "todos los módulos" : plural(modulos.length, "módulo", "módulos")}`, "ok");
     if (r.pendientes.length) {
       await dialogo("Avisos pendientes de entregar",
-        `<p>${esc(r.nombre)} tiene ${plural(r.pendientes.length, "aviso", "avisos")} en <b>Pendientes de entregar</b>:</p>
+        `<p>${esc(r.nombre)} tiene ${plural(r.pendientes.length, "aviso", "avisos")} de esos módulos en <b>Pendientes de entregar</b>:</p>
          <ul class="lista-modal">${r.pendientes.map(d => `<li>${esc(d)}</li>`).join("")}</ul>
-         <p class="nota">Si ya no se van a entregar, anúlalos desde la pestaña Avisos (motivo: baja en el centro).</p>`,
+         <p class="nota">Si ya no se van a entregar, anúlalos desde la pestaña Avisos (motivo: la baja).</p>`,
         [{ texto: "Entendido", clase: "principal", valor: true }]);
     }
     cargarAlumnado();
@@ -934,15 +942,25 @@ async function darDeBaja(grupo, enRaices) {
   } catch (e) { error(e); }
 }
 
+// El botón «Dar de baja» solo se activa con algún módulo marcado (o «Todos»)
+$("#modal").addEventListener("change", ev => {
+  const oculto = $("#baja-elegidos");
+  if (!oculto || !(ev.target.name === "modulo-baja" || ev.target.id === "baja-todos")) return;
+  const todos = $("#baja-todos").checked;
+  document.querySelectorAll("[name=modulo-baja]").forEach(c => { c.disabled = todos; });
+  oculto.value = todos || document.querySelector("[name=modulo-baja]:checked") ? "si" : "";
+  oculto.oninput();
+});
+
 $("#vista-alumnado").addEventListener("click", async ev => {
   const celda = ev.target.closest("[data-alumno]");
   if (!celda || ev.target.tagName !== "BUTTON") return;
-  const { grupo, alumno } = celda.dataset;
+  const { grupo, alumno, siglas } = celda.dataset;
   if ("editar" in ev.target.dataset) editarAlumno(grupo, alumno);
-  if ("baja" in ev.target.dataset) darDeBaja(grupo, alumno);
+  if ("baja" in ev.target.dataset) darDeBaja(grupo, alumno, siglas);
   if ("recuperar" in ev.target.dataset) {
     try {
-      await api("/api/alumno/recuperar", { grupo, alumno });
+      await api("/api/alumno/recuperar", { grupo, alumno, modulo: siglas });
       tostada("Baja deshecha: vuelve a la lista y a recibir avisos", "ok");
       cargarAlumnado();
     } catch (e) { error(e); }

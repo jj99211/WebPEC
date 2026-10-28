@@ -8,6 +8,15 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.21 — 2026-10-28
+
+- **Bajas por módulo**: al dar de baja se eligen los módulos (el de la fila viene marcado) o «Todos sus módulos del
+  grupo» (baja en el centro, también para módulos de informes futuros). Antes la baja quitaba al alumno/a de todos
+  sus módulos. «Alumnado dado de baja» muestra el módulo de cada baja y se recupera módulo a módulo.
+- Las bajas de la 3.20 se conservan como bajas en todos los módulos de su grupo (formato de datos 6: pasan a
+  `bajas_alumnado.csv`; se migra solo al arrancar, con copia previa).
+- Alumnado: la tabla ya no se corta por la derecha («Editar» y «Baja» van uno encima del otro).
+
 ## 3.20 — 2026-10-28
 
 - **Dar de baja a un alumno/a** (pestaña Alumnado, enlace «Baja»): para quien ha dejado el centro pero sigue en los

@@ -283,12 +283,14 @@ class Manejador(BaseHTTPRequestHandler):
                                 d.get("nombre", ""), d.get("correo", ""))
             return r, "Editar alumno/a", f"{d.get('alumno')} ({d.get('grupo')}): {r['nombre']}, {r['correo'] or 'sin correo'}"
         if ruta == "/api/alumno/baja":
-            r = m.dar_de_baja(d.get("grupo", ""), d.get("alumno", ""), d.get("motivo", ""))
-            return r, "Dar de baja a alumno/a", f"{d.get('alumno')} ({d.get('grupo')})" + \
+            r = m.dar_de_baja(d.get("grupo", ""), d.get("alumno", ""), d.get("modulos", []), d.get("motivo", ""))
+            return r, "Dar de baja a alumno/a", f"{d.get('alumno')} ({d.get('grupo')}): " + \
+                (", ".join(d.get("modulos") or []) or "todos los módulos") + \
                 (f" — motivo: {d.get('motivo')}" if d.get("motivo") else "")
         if ruta == "/api/alumno/recuperar":
-            m.recuperar_alumno(d.get("grupo", ""), d.get("alumno", ""))
-            return {"ok": True}, "Recuperar alumno/a dado de baja", f"{d.get('alumno')} ({d.get('grupo')})"
+            m.recuperar_alumno(d.get("grupo", ""), d.get("alumno", ""), d.get("modulo", ""))
+            return {"ok": True}, "Recuperar alumno/a dado de baja", \
+                f"{d.get('alumno')} ({d.get('grupo')}): {d.get('modulo') or 'todos los módulos'}"
         if ruta == "/api/datos/importar":
             r = m.importar_datos(d)
             return r, "Importar datos", f"{q.get('nombre', '')}: {r['ficheros']} ficheros; copia {r['copia']}"

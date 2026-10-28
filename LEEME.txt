@@ -95,7 +95,8 @@ registro_avisos.csv          registro de avisos emitidos (no borrar filas)
 configuracion.ini            configuración (también editable desde la aplicación)
 COPIAS_SEGURIDAD\            copias antes de vaciar el registro o la hoja y antes de
                              poner al día los datos de una versión anterior
-alumnado.csv                 correos, nombres corregidos y bajas del alumnado
+alumnado.csv                 correos y nombres corregidos del alumnado
+bajas_alumnado.csv           alumnado dado de baja (por módulo o en todo el grupo)
 actividad.csv                quién ha hecho cada acción y cuándo
 VERSION_DATOS, migraciones.log  formato de los datos e historial de sus actualizaciones
 

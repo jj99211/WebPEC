@@ -173,6 +173,11 @@ details.plegable summary { cursor: pointer; font-weight: 700; }
 .tabla .col-check { width: 36px; }
 .tabla input[type=text], .tabla input:not([type]) { width: 100%; min-width: 60px; }
 .tabla .acciones-fila { white-space: nowrap; text-align: right; }
+.tabla .acciones-fila.apiladas button { display: block; margin-left: auto; }
+#tabla-alumnado td, #tabla-alumnado th { padding-left: 8px; padding-right: 8px; }
+.lista-modulos { margin: 12px 0 4px; display: grid; gap: 6px; }
+.casilla-modulo { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.casilla-modulo input { flex: none; }
 .tabla .secundario { color: var(--suave); font-size: 13px; }
 
 /* ------------------------------------------------------- formularios --- */
