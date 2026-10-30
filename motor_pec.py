@@ -49,7 +49,8 @@ PROGRAMA = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROGRAMA / "lib"))
 
 from openpyxl import Workbook, load_workbook  # noqa: E402
-from openpyxl.styles import Font, PatternFill  # noqa: E402
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: E402
+from openpyxl.utils import get_column_letter  # noqa: E402
 from pypdf import PdfReader, PdfWriter  # noqa: E402
 
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -1076,6 +1077,22 @@ def convertir_a_pdf(conversor, docx_lista, carpeta):
 
 # ---------------------------------------------------------------- motor ---
 
+def texto_casilla(c):
+    """Texto de una casilla alumno × módulo del informe para la evaluación."""
+    if not c:
+        return "—"
+    if c["estado"] == "baja":
+        return "Baja"
+    texto = f"{c['fi']} FI · {c['porcentaje']} %"
+    if c["estado"] == "aviso":
+        texto += f"\nAviso {c['fecha_aviso'][:5]}" + (" (≥ 15 %)" if c.get("supera_15") else "")
+    elif c["estado"] == "perdida":
+        texto += f"\nPérdida {c['fecha_perdida'][:5]}"
+    elif c["estado"] == "supera":
+        texto += "\n≥ 7,5 % sin aviso"
+    return texto
+
+
 class Motor:
     """Operaciones de la aplicación sobre la carpeta de datos (base)."""
 
@@ -1680,6 +1697,116 @@ class Motor:
                  for b in leer_bajas(self.base / BAJAS)]
         bajas.sort(key=lambda b: (b["grupo"], normalizar(b["nombre"]), b["modulo"]))
         return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo, "bajas": bajas}
+
+    # ---- informe para la sesión de evaluación
+
+    def informe_evaluacion(self, grupo=""):
+        """
+        Situación agregada por grupo (todos, o solo grupo): cada alumno/a con sus faltas y avisos en cada
+        módulo, según el último informe procesado de cada módulo, y el alumnado dado de baja.
+        """
+        situacion = self.situacion_alumnado()
+        grupos = {}
+        for a in situacion["alumnos"]:
+            if grupo and normalizar(a["grupo"]) != normalizar(grupo):
+                continue
+            g = grupos.setdefault(a["grupo"], {"grupo": a["grupo"], "modulos": {}, "alumnos": {}, "bajas": []})
+            g["modulos"].setdefault(a["siglas"], {
+                "siglas": a["siglas"], "nombre": a["modulo"], "horas": a["horas"], "umbral_75": a["umbral_75"],
+                "umbral_15": a["umbral_15"], "profesor": a["profesor"], "informe": a["informe"]})
+            fila = g["alumnos"].setdefault(clave_alumno(a["en_raices"]), {
+                "nombre": a["alumno"], "correo": a["correo"], "modulos": {}})
+            fila["modulos"][a["siglas"]] = {k: a[k] for k in ("fi", "porcentaje", "estado", "fecha_aviso",
+                                                              "fecha_perdida", "supera_15")}
+        for b in situacion["bajas"]:
+            if b["grupo"] in grupos:
+                grupos[b["grupo"]]["bajas"].append(b)
+                fila = grupos[b["grupo"]]["alumnos"].get(clave_alumno(b["alumno"]))
+                if fila and b["modulo"]:  # sigue en otros módulos: su casilla de este se marca como baja
+                    fila["modulos"][b["modulo"]] = {"estado": "baja"}
+        resultado = []
+        for g in sorted(grupos.values(), key=lambda g: g["grupo"]):
+            modulos = sorted(g["modulos"].values(), key=lambda m: m["siglas"])
+            alumnos = sorted(g["alumnos"].values(), key=lambda a: normalizar(a["nombre"]))
+            for a in alumnos:
+                estados = [c["estado"] for c in a["modulos"].values()]
+                a.update(avisos=estados.count("aviso"), perdidas=estados.count("perdida"),
+                         supera=estados.count("supera"))
+            resultado.append({
+                "grupo": g["grupo"], "modulos": modulos, "alumnos": alumnos, "bajas": g["bajas"],
+                "resumen": {"alumnos": len(alumnos),
+                            "con_aviso": sum(1 for a in alumnos if a["avisos"]),
+                            "con_perdida": sum(1 for a in alumnos if a["perdidas"]),
+                            "supera": sum(1 for a in alumnos if a["supera"]),
+                            "avisos": sum(a["avisos"] for a in alumnos),
+                            "perdidas": sum(a["perdidas"] for a in alumnos)},
+            })
+        if grupo and not resultado:
+            raise ErrorPEC(f"No hay datos del grupo {grupo} en los informes procesados")
+        return {"grupos": resultado, "centro": self.config()["centro"],
+                "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")}
+
+    def informe_evaluacion_xlsx(self, grupo=""):
+        """El informe para la evaluación en Excel: una hoja por grupo."""
+        datos = self.informe_evaluacion(grupo)
+        libro = Workbook()
+        libro.remove(libro.active)
+        fino = Side(style="thin", color="CBD5E1")
+        borde = Border(left=fino, right=fino, top=fino, bottom=fino)
+        colores = {"aviso": "FEF3C7", "perdida": "FFE4E6", "supera": "E0E7FF", "baja": "E2E8F0"}
+        cabecera = PatternFill("solid", fgColor="EEF2F7")
+        for g in datos["grupos"]:
+            hoja = libro.create_sheet(re.sub(r"[\\/*?:\[\]]", "_", g["grupo"])[:31])
+            r = g["resumen"]
+            hoja.append([f"{datos['centro']} · Situación de faltas y avisos de pérdida de evaluación continua"])
+            hoja["A1"].font = Font(bold=True, size=13)
+            hoja.append([f"Grupo {g['grupo']} · {r['alumnos']} alumnos/as · {r['con_aviso']} con aviso del 7,5 % · "
+                         f"{r['con_perdida']} con pérdida del 15 % · generado el {datos['fecha']}"])
+            hoja.append([])
+            hoja.append(["Alumno/a"] + [m["siglas"] for m in g["modulos"]] + ["Avisos 7,5 %", "Pérdidas 15 %"])
+            fila_cab = hoja.max_row
+            for celda in hoja[fila_cab]:
+                celda.font, celda.fill, celda.border = Font(bold=True), cabecera, borde
+                celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            for a in g["alumnos"]:
+                valores = [a["nombre"]]
+                for m in g["modulos"]:
+                    c = a["modulos"].get(m["siglas"])
+                    valores.append(texto_casilla(c))
+                hoja.append(valores + [a["avisos"] or "", a["perdidas"] or ""])
+                for i, m in enumerate(g["modulos"], start=2):
+                    c = a["modulos"].get(m["siglas"]) or {}
+                    celda = hoja.cell(hoja.max_row, i)
+                    celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    if c.get("estado") in colores:
+                        celda.fill = PatternFill("solid", fgColor=colores[c["estado"]])
+                for celda in hoja[hoja.max_row]:
+                    celda.border = borde
+            hoja.append([])
+            hoja.append(["Módulo", "Nombre", "Profesor/a", "Horas", "7,5 %", "15 %", "Último informe"])
+            for celda in hoja[hoja.max_row]:
+                celda.font, celda.fill = Font(bold=True), cabecera
+            for m in g["modulos"]:
+                hoja.append([m["siglas"], m["nombre"], m["profesor"], m["horas"], m["umbral_75"], m["umbral_15"],
+                             m["informe"]])
+            hoja.append([])
+            hoja.append(["Cada casilla: faltas injustificadas (FI) y % de horas del módulo. Aviso = aviso del 7,5 %; "
+                         "Pérdida = pérdida del 15 %; «≥ 7,5 % sin aviso» = le corresponde un aviso que aún no "
+                         "tiene; Baja = dado/a de baja en ese módulo; — = no está en el informe del módulo."])
+            if g["bajas"]:
+                hoja.append([])
+                hoja.append(["Alumnado dado de baja", "Módulo", "Fecha", "Motivo"])
+                for celda in hoja[hoja.max_row]:
+                    celda.font, celda.fill = Font(bold=True), cabecera
+                for b in g["bajas"]:
+                    hoja.append([b["nombre"], b["nombre_modulo"] or "Todos los módulos", b["fecha"][:10], b["motivo"]])
+            hoja.column_dimensions["A"].width = 38
+            for i in range(2, len(g["modulos"]) + 4):
+                hoja.column_dimensions[get_column_letter(i)].width = 15
+            hoja.freeze_panes = hoja.cell(fila_cab + 1, 2)
+        salida = io.BytesIO()
+        libro.save(salida)
+        return salida.getvalue()
 
     # ---- fichas del alumnado: correos (solo el dato), nombres corregidos y bajas
 

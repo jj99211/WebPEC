@@ -8,6 +8,14 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.30 — 2026-10-30
+
+- **Informe para la evaluación** (pestaña Alumnado): listado por grupo (o de todos, uno por página) para la sesión de
+  evaluación. Tabla alumnado × módulos con las faltas injustificadas, el porcentaje y la situación de cada casilla
+  (aviso, pérdida, «≥ 7,5 % sin aviso», baja) en colores, avisos y pérdidas de cada alumno/a, resumen del grupo,
+  datos de los módulos y alumnado dado de baja. Se abre listo para imprimir o guardar en PDF (A4 horizontal) o se
+  descarga en Excel (una hoja por grupo). Queda anotado en la Actividad.
+
 ## 3.22 — 2026-10-28
 
 - El pie con el contacto y la licencia tiene fondo propio y una línea encima: los listados ya no se mezclan con su

@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.21*
+Manual de la versión 3.30*
 
 ---
 
@@ -168,6 +168,18 @@ En cada fila:
   desaparece de la lista y **no vuelve a recibir avisos**, aunque siga en los informes; en los demás, todo sigue
   igual. Se puede anotar el motivo. Sus avisos ya generados y el registro se conservan: si le quedan avisos de esos
   módulos en Pendientes, WebPEC lo indica para anularlos si ya no se van a entregar.
+
+**Informe para la evaluación…** prepara el listado para llevar a la **sesión de evaluación**: se elige un grupo (o
+todos, uno por página) y sale una tabla con cada alumno/a en filas y cada módulo en columnas. En cada casilla, las
+faltas injustificadas, el porcentaje de horas y la situación (aviso del 7,5 % o pérdida del 15 % con su fecha, «≥ 7,5 %
+sin aviso» o baja en ese módulo), coloreada para verla de un vistazo; al final de cada fila, cuántos avisos y pérdidas
+tiene. Encima, el resumen del grupo, y debajo, los módulos (profesor/a, horas, umbrales y fecha del último informe) y
+el alumnado dado de baja. Dos formatos:
+
+- **Ver e imprimir**: se abre en otra pestaña del navegador, lista para **imprimir o guardar en PDF** (en horizontal).
+- **Descargar Excel**: un fichero `.xlsx` con una hoja por grupo, para retocarlo o añadir columnas.
+
+Se calcula con el último informe procesado de cada módulo: conviene procesar antes los informes más recientes.
 
 Al final de la pestaña, **Alumnado dado de baja** lista las bajas (módulo o «Todos los módulos», fecha, quién la dio y
 motivo); **Recuperar** deshace una baja dada por error.

@@ -154,6 +154,18 @@ class Manejador(BaseHTTPRequestHandler):
                 m.anotar_actividad("Exportar datos", f"{len(datos) // 1024} KB")
                 nombre = f"WebPEC_datos_{datetime.now():%Y%m%d_%H%M}.zip"
                 return self._fichero(datos, nombre, "application/zip", True)
+            if ruta == "/evaluacion":
+                m.usuario = self._usuario(q)
+                grupo, excel = q.get("grupo", ""), q.get("formato") == "xlsx"
+                datos = m.informe_evaluacion_xlsx(grupo) if excel else \
+                    evaluacion_html(m.informe_evaluacion(grupo)).encode("utf-8")
+                m.anotar_actividad("Informe para la evaluación", f"{grupo or 'todos los grupos'} "
+                                   f"({'Excel' if excel else 'para imprimir'})")
+                if excel:
+                    nombre = f"Evaluacion_{motor_pec.para_fichero(grupo) or 'todos'}_{datetime.now():%Y%m%d}.xlsx"
+                    return self._fichero(datos, nombre,
+                                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", True)
+                return self._enviar(200, datos, "text/html; charset=utf-8")
             if ruta == "/api/config":
                 # Lo hecho al migrar los datos se muestra una vez, al abrir la página
                 migracion, m.migracion = m.migracion, []
@@ -386,16 +398,116 @@ def markdown_html(md):
     return "\n".join(html)
 
 
+def escudo_en_linea():
+    try:
+        return "data:image/png;base64," + base64.b64encode((WEB / "escudo.png").read_bytes()).decode()
+    except OSError:
+        return ""
+
+
+def evaluacion_html(datos):
+    """Página para imprimir (o guardar en PDF) con la situación de cada grupo, para la sesión de evaluación."""
+    e = escape
+
+    def casilla(c):
+        if not c:
+            return '<td class="nada">—</td>'
+        if c["estado"] == "baja":
+            return '<td class="baja">Baja</td>'
+        marca = {"aviso": f'<b>Aviso</b> {e(c["fecha_aviso"][:5])}' + (" · ≥ 15 %" if c.get("supera_15") else ""),
+                 "perdida": f'<b>Pérdida</b> {e(c["fecha_perdida"][:5])}',
+                 "supera": "<b>≥ 7,5 %</b> sin aviso"}.get(c["estado"], "")
+        return (f'<td class="{c["estado"]}"><span class="fi">{c["fi"]}</span> <span class="pc">{e(c["porcentaje"])} %</span>'
+                + (f'<span class="marca">{marca}</span>' if marca else "") + "</td>")
+
+    secciones = []
+    for g in datos["grupos"]:
+        r = g["resumen"]
+        cabeza = "".join(f'<th title="{e(m["nombre"])}">{e(m["siglas"])}</th>' for m in g["modulos"])
+        filas = "".join(
+            f'<tr><td class="alumno">{e(a["nombre"])}</td>'
+            + "".join(casilla(a["modulos"].get(m["siglas"])) for m in g["modulos"])
+            + f'<td class="num">{a["avisos"] or ""}</td><td class="num">{a["perdidas"] or ""}</td></tr>'
+            for a in g["alumnos"])
+        modulos = "".join(
+            f'<tr><td><b>{e(m["siglas"])}</b></td><td>{e(m["nombre"])}</td><td>{e(m["profesor"])}</td>'
+            f'<td class="num">{e(m["horas"])}</td><td class="num">{e(m["umbral_75"])}</td>'
+            f'<td class="num">{e(m["umbral_15"])}</td><td>{e(m["informe"])}</td></tr>' for m in g["modulos"])
+        bajas = "" if not g["bajas"] else (
+            '<h3>Alumnado dado de baja</h3><table class="lista"><tr><th>Alumno/a</th><th>Módulo</th><th>Fecha</th>'
+            '<th>Motivo</th></tr>' + "".join(
+                f'<tr><td>{e(b["nombre"])}</td><td>{e(b["nombre_modulo"] or "Todos los módulos")}</td>'
+                f'<td>{e(motor_pec.fecha_legible(b["fecha"][:10]))}</td><td>{e(b["motivo"])}</td></tr>'
+                for b in g["bajas"]) + "</table>")
+        secciones.append(f"""<section>
+<div class="titulo"><img src="{escudo_en_linea()}" alt=""><div><h1>Grupo {e(g["grupo"])}</h1>
+<p>{e(datos["centro"])} · Faltas injustificadas y avisos de pérdida de evaluación continua · {e(datos["fecha"])}</p></div></div>
+<ul class="resumen"><li><b>{r["alumnos"]}</b> alumnos/as</li>
+<li><b>{r["con_aviso"]}</b> con aviso del 7,5 % ({r["avisos"]} {"aviso" if r["avisos"] == 1 else "avisos"})</li>
+<li><b>{r["con_perdida"]}</b> con pérdida del 15 % ({r["perdidas"]} {"pérdida" if r["perdidas"] == 1 else "pérdidas"})</li>
+{f'<li class="ojo"><b>{r["supera"]}</b> superan el 7,5 % sin aviso</li>' if r["supera"] else ""}</ul>
+<table class="matriz"><thead><tr><th class="alumno">Alumno/a</th>{cabeza}<th>Avisos<br>7,5 %</th><th>Pérdidas<br>15 %</th></tr></thead>
+<tbody>{filas}</tbody></table>
+<p class="leyenda">Cada casilla: faltas injustificadas (FI) y % de las horas del módulo, según el último informe procesado.
+<span class="aviso">Aviso</span> aviso del 7,5 % (fecha del informe) · <span class="perdida">Pérdida</span> pérdida del 15 % ·
+<span class="supera">≥ 7,5 % sin aviso</span> le corresponde un aviso que aún no tiene · <span class="baja">Baja</span> dado/a de
+baja en ese módulo · — no aparece en el informe del módulo.</p>
+<h3>Módulos</h3><table class="lista"><tr><th>Siglas</th><th>Módulo</th><th>Profesor/a</th><th>Horas</th><th>7,5 %</th>
+<th>15 %</th><th>Último informe</th></tr>{modulos}</table>
+{bajas}</section>""")
+    if not secciones:
+        secciones.append("<section><p>No hay informes procesados con datos de alumnado.</p></section>")
+    return f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebPEC · Informe para la evaluación</title>
+<style>
+  :root {{ --texto: #1e293b; --suave: #64748b; --linea: #cbd5e1; --principal: #0f766e; }}
+  body {{ margin: 0; background: #f5f7fb; color: var(--texto); font: 13px/1.45 system-ui, "Segoe UI", sans-serif; }}
+  main {{ max-width: 1200px; margin: 0 auto; padding: 20px 16px 50px; }}
+  .botones {{ display: flex; gap: 10px; margin-bottom: 16px; }}
+  .botones button {{ font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--linea);
+    background: #fff; color: var(--principal); cursor: pointer; }}
+  section {{ background: #fff; padding: 18px 20px; border-radius: 12px; margin-bottom: 24px; }}
+  .titulo {{ display: flex; gap: 12px; align-items: center; }} .titulo img {{ height: 52px; }}
+  h1 {{ margin: 0; font-size: 21px; }} .titulo p {{ margin: 2px 0 0; color: var(--suave); }}
+  h3 {{ margin: 18px 0 6px; font-size: 14px; }}
+  .resumen {{ display: flex; flex-wrap: wrap; gap: 6px 22px; list-style: none; padding: 0; margin: 12px 0; }}
+  .resumen .ojo {{ color: #3730a3; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th, td {{ border: 1px solid var(--linea); padding: 4px 6px; vertical-align: middle; }}
+  th {{ background: #eef2f7; font-size: 12px; }}
+  .matriz td {{ text-align: center; white-space: nowrap; }} .matriz td.alumno {{ white-space: normal; }}
+  .matriz td.num {{ text-align: center; }}
+  .matriz {{ width: auto; min-width: 55%; }} .matriz td, .matriz th {{ min-width: 82px; }}
+  .matriz th.alumno, .matriz td.alumno {{ text-align: left; min-width: 250px; }}
+  .fi {{ font-weight: 700; }} .pc {{ color: var(--suave); font-size: 11.5px; }}
+  .marca {{ display: block; font-size: 11px; }}
+  .aviso {{ background: #fef3c7; }} .perdida {{ background: #ffe4e6; }} .supera {{ background: #e0e7ff; }}
+  .baja {{ background: #e2e8f0; color: var(--suave); }} .nada {{ color: var(--suave); }}
+  .leyenda {{ color: var(--suave); font-size: 11.5px; margin: 8px 0 0; }}
+  .leyenda span {{ padding: 0 4px; border-radius: 3px; color: var(--texto); }}
+  .num {{ text-align: right; }} .lista td, .lista th {{ text-align: left; }}
+  @page {{ size: A4 landscape; margin: 10mm; }}
+  @media print {{
+    body {{ background: #fff; font-size: 11px; }} main {{ padding: 0; max-width: none; }} .botones {{ display: none; }}
+    section {{ padding: 0; margin: 0; border-radius: 0; break-after: page; }} section:last-child {{ break-after: auto; }}
+    * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    tr {{ break-inside: avoid; }} thead {{ display: table-header-group; }}
+  }}
+</style></head>
+<body><main>
+<div class="botones"><button onclick="window.print()">Imprimir o guardar en PDF</button></div>
+{"".join(secciones)}
+</main></body></html>"""
+
+
 def manual_html(para_pdf=False):
     """Página con el manual de usuario (para la pestaña Ayuda o para generar el PDF)."""
     try:
         md = MANUAL.read_text(encoding="utf-8")
     except OSError:
         md = "# Manual de usuario\n\nNo se encuentra MANUAL_USUARIO.md en la carpeta de WebPEC."
-    try:
-        escudo = "data:image/png;base64," + base64.b64encode((WEB / "escudo.png").read_bytes()).decode()
-    except OSError:
-        escudo = ""
+    escudo = escudo_en_linea()
     botones = "" if para_pdf else (
         '<div class="botones"><button onclick="window.print()">Imprimir o guardar en PDF</button>'
         + ('<a href="/manual.pdf?descargar=1">Descargar el manual en PDF</a>' if MANUAL_PDF.is_file() else "")

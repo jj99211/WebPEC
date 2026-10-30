@@ -967,6 +967,25 @@ $("#vista-alumnado").addEventListener("click", async ev => {
   }
 });
 
+$("#boton-evaluacion").addEventListener("click", async () => {
+  const grupos = [...new Set(alumnado.alumnos.map(a => a.grupo))].sort();
+  if (!grupos.length) return tostada("No hay informes procesados: no hay nada que listar", "error");
+  const elegido = $("#filtro-al-grupo").value;
+  const formato = await dialogo("Informe para la evaluación",
+    `<p>Un listado por grupo para llevar a la sesión de evaluación: cada alumno/a con sus faltas injustificadas, el
+       porcentaje y la situación (aviso, pérdida, baja) en cada módulo, con el resumen del grupo y la lista de bajas.</p>
+     <label class="campo-motivo">Grupo<select id="evaluacion-grupo">
+       <option value="">Todos los grupos (uno por página)</option>
+       ${grupos.map(g => `<option ${g === elegido ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>
+     <p class="nota">Se calcula con el último informe procesado de cada módulo: procesa antes los informes más recientes.</p>`,
+    [{ texto: "Cancelar", valor: null }, { texto: "Descargar Excel", valor: "xlsx" },
+     { texto: "Ver e imprimir", clase: "principal", valor: "html" }]);
+  if (!formato) return;
+  const url = `/evaluacion?${new URLSearchParams({ grupo: $("#evaluacion-grupo").value, formato, usuario })}`;
+  if (formato === "html") window.open(url, "_blank");
+  else window.location.href = url;
+});
+
 $("#boton-importar-correos").addEventListener("click", async () => {
   const ok = await dialogo("Importar correos del alumnado",
     `<p>Elige un fichero CSV o Excel con el nombre del alumno/a y su correo (por ejemplo, una exportación de Raíces o
