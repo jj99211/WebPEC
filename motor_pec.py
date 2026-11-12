@@ -18,11 +18,12 @@ Datos (en DATOS/, dentro de la carpeta del programa; se crean solos si no existe
   alumnado.csv                   correos del alumnado y nombres corregidos a mano
   bajas_alumnado.csv             alumnado dado de baja en un módulo o en todos los de su grupo
 
-Reglas (valor de referencia: columna FI, faltas injustificadas):
-  - FI >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
+Reglas (las faltas que cuentan dependen del criterio de cada módulo: solo las injustificadas, FI,
+o las injustificadas más las justificadas, FI + FJ, como pide la normativa):
+  - faltas >= 7,5 % de las horas y sin aviso previo -> FECHA_AVISO_PEC_GRUPO_MOD_Apellido_Nombre.pdf
     (aunque ya supere el 15 %: primero siempre se avisa).
-  - FI >= 15 %, con aviso emitido en un informe anterior y con más faltas que
-    cuando se avisó                            -> FECHA_PEC_GRUPO_MOD_Apellido_Nombre.pdf
+  - faltas >= 15 %, con aviso emitido en un informe anterior y con más faltas que
+    cuando se avisó (contadas con el mismo criterio) -> FECHA_PEC_GRUPO_MOD_Apellido_Nombre.pdf
 """
 
 import configparser
@@ -77,8 +78,9 @@ BAJAS = "bajas_alumnado.csv"
 CORREOS_4 = "correos_alumnado.csv"  # el fichero de correos del formato de datos 4
 
 # Formato de los datos. 2: WebPEC 2.x (datos sueltos en la carpeta del programa);
-# 3: carpeta DATOS/ y registro con anulaciones; 4: registro con quién genera, entrega y anula.
-FORMATO_DATOS = 6
+# 3: carpeta DATOS/ y registro con anulaciones; 4: registro con quién genera, entrega y anula;
+# 5: alumnado.csv; 6: bajas por módulo; 7: criterio de faltas de cada módulo y FJ en el registro.
+FORMATO_DATOS = 7
 # Lo que en la 2.x estaba en la carpeta del programa y en la 3 va dentro de DATOS/
 DATOS_2X = [CONFIGURACION, HOJA_MODULOS, REGISTRO, NUEVOS, PROCESAR, PROCESADOS,
             PENDIENTES, REALIZADOS, COPIAS]
@@ -106,6 +108,7 @@ CONFIGURACION_DEFECTO = {
     "programa_correo": "auto",
     "puerto": "8765",
     "acceso_red": "no",
+    "buscar_actualizaciones": "si",
 }
 
 PLANTILLA_CONFIGURACION = """\
@@ -134,6 +137,11 @@ puerto = {puerto}
 ; si: se puede abrir desde otros ordenadores de la red (http://<este ordenador>:<puerto>)
 ; no: solo desde este ordenador
 acceso_red = {acceso_red}
+
+[actualizaciones]
+; si: al abrir WebPEC se comprueba en GitHub si hay una versión nueva (no se envía ningún dato)
+; no: no se comprueba
+buscar_actualizaciones = {buscar_actualizaciones}
 """
 
 AVISO, PEC = "AVISO_PEC", "PEC"
@@ -152,7 +160,28 @@ ANCHO_TEXTO = 9070
 # Hoja de cálculo: columnas de cada pestaña
 PESTANA_MODULOS = "MODULOS"
 COLUMNAS_MODULOS = ["Unidad", "Siglas", "Módulo en el informe", "Nombre del módulo en los avisos",
-                    "Profesor/a", "Total horas", "7,5%", "15%"]
+                    "Profesor/a", "Total horas", "7,5%", "15%", "Faltas que cuentan"]
+COLUMNA_CRITERIO = 9
+
+# Faltas que cuentan para los umbrales, según el criterio de cada módulo
+SOLO_FI, FI_FJ = "FI", "FI+FJ"
+CRITERIOS = {SOLO_FI: "Solo injustificadas (FI)", FI_FJ: "Injustificadas + justificadas (FI + FJ)"}
+CRITERIO_NUEVOS = FI_FJ     # el de la normativa: el que se propone al dar de alta un módulo
+CRITERIO_ANTERIOR = SOLO_FI  # el de los módulos de antes de la 3.40 (y el de una celda vacía)
+
+
+def leer_criterio(valor):
+    texto = re.sub(r"\s+", "", str(valor or "")).upper()
+    return FI_FJ if texto in ("FI+FJ", "FJ+FI") else SOLO_FI
+
+
+def otro_criterio(criterio):
+    return SOLO_FI if criterio == FI_FJ else FI_FJ
+
+
+def faltas_que_cuentan(alumno, criterio):
+    """Faltas del alumno/a (con fi y fj) que cuentan para los umbrales con ese criterio."""
+    return alumno["fi"] + ((alumno.get("fj") or 0) if criterio == FI_FJ else 0)
 PESTANA_PROFESORES = "PROFESORES"
 COLUMNAS_PROFESORES = ["Profesor/a en el informe", "Nombre para la firma"]
 
@@ -227,6 +256,7 @@ def guardar_configuracion(base, nuevos):
         raise ErrorPEC(f"Programa de correo no válido: {valores['programa_correo']}")
     if not valores["puerto"].isdigit():
         raise ErrorPEC("El puerto debe ser un número")
+    valores["buscar_actualizaciones"] = "no" if valores["buscar_actualizaciones"].lower() in ("no", "0") else "si"
     (base / CONFIGURACION).write_text(PLANTILLA_CONFIGURACION.format(**valores), encoding="utf-8")
     return valores
 
@@ -240,7 +270,7 @@ def fecha_fichero(config, f):
 def crear_hoja_modulos(ruta):
     libro = Workbook()
     for i, (titulo, columnas, anchos) in enumerate([
-            (PESTANA_MODULOS, COLUMNAS_MODULOS, [10, 8, 45, 45, 32, 12, 8, 8]),
+            (PESTANA_MODULOS, COLUMNAS_MODULOS, [10, 8, 45, 45, 32, 12, 8, 8, 18]),
             (PESTANA_PROFESORES, COLUMNAS_PROFESORES, [40, 40])]):
         hoja = libro.active if i == 0 else libro.create_sheet()
         hoja.title = titulo
@@ -267,6 +297,7 @@ class HojaModulos:
             if not fila or not fila[0] or not fila[2]:
                 continue
             unidad, siglas, en_informe, en_avisos, profesor, horas = (list(fila) + [None] * 6)[:6]
+            criterio = leer_criterio(fila[COLUMNA_CRITERIO - 1] if len(fila) >= COLUMNA_CRITERIO else "")
             try:
                 horas = a_numero(horas)
             except (TypeError, ValueError):
@@ -278,7 +309,7 @@ class HojaModulos:
                 "en_informe": str(en_informe).strip(),
                 "nombre": str(en_avisos or en_informe).strip(),
                 "profesor": str(profesor or "").strip(), "horas": horas,
-                "umbral_75": horas * 0.075, "umbral_15": horas * 0.15,
+                "umbral_75": horas * 0.075, "umbral_15": horas * 0.15, "criterio": criterio,
             })
         for n, fila in enumerate(libro[PESTANA_PROFESORES].iter_rows(min_row=2, values_only=True),
                                  start=2):
@@ -306,6 +337,7 @@ class HojaModulos:
         cambiar(libro)
         # Fórmulas de los umbrales, rehechas por si se han borrado filas
         hoja = libro[PESTANA_MODULOS]
+        poner_cabecera_criterio(hoja)
         for n in range(2, hoja.max_row + 1):
             if hoja.cell(n, 1).value:
                 hoja.cell(n, 7).value = f"=F{n}*0.075"
@@ -317,16 +349,17 @@ class HojaModulos:
                            f"y vuelve a intentarlo")
         self.__init__(self.ruta)
 
-    def anadir_modulo(self, unidad, siglas, en_informe, nombre, profesor, horas):
+    def anadir_modulo(self, unidad, siglas, en_informe, nombre, profesor, horas, criterio):
         self._guardar(lambda libro: libro[PESTANA_MODULOS].append(
-            [unidad, siglas, en_informe, nombre, profesor, horas]))
+            [unidad, siglas, en_informe, nombre, profesor, horas, None, None, criterio]))
 
-    def actualizar_modulo(self, fila, horas, nombre, siglas):
+    def actualizar_modulo(self, fila, horas, nombre, siglas, criterio):
         def cambiar(libro):
             hoja = libro[PESTANA_MODULOS]
             hoja.cell(fila, 2).value = siglas
             hoja.cell(fila, 4).value = nombre
             hoja.cell(fila, 6).value = horas
+            hoja.cell(fila, COLUMNA_CRITERIO).value = criterio
         self._guardar(cambiar)
 
     def borrar_modulo(self, fila):
@@ -356,6 +389,16 @@ class HojaModulos:
         self._guardar(cambiar)
 
 
+def poner_cabecera_criterio(hoja):
+    """Columna «Faltas que cuentan» en la pestaña de módulos (las hojas de antes de la 3.40 no la tienen)."""
+    celda = hoja.cell(1, COLUMNA_CRITERIO)
+    if celda.value != COLUMNAS_MODULOS[COLUMNA_CRITERIO - 1]:
+        celda.value = COLUMNAS_MODULOS[COLUMNA_CRITERIO - 1]
+        celda.font = Font(bold=True)
+        celda.fill = PatternFill("solid", fgColor="DDEBF7")
+        hoja.column_dimensions[celda.column_letter].width = 18
+
+
 def siglas_propuestas(nombre, usadas=()):
     palabras = [p for p in sin_acentos(nombre).split() if len(p) > 2]
     siglas = "".join(p[0] for p in palabras).upper() or "MOD"
@@ -368,7 +411,7 @@ def siglas_propuestas(nombre, usadas=()):
 # ----------------------------------------------------------- informes ---
 
 def leer_informe(ruta):
-    """Extrae la cabecera del informe de faltas y la lista de alumnos con sus FI."""
+    """Extrae la cabecera del informe de faltas y la lista de alumnos con sus FJ y FI."""
     try:
         lector = PdfReader(str(ruta))
         texto = "\n".join(p.extract_text(extraction_mode="layout") or "" for p in lector.pages)
@@ -403,7 +446,7 @@ def leer_informe(ruta):
         m = PATRON_ALUMNO.match(linea)
         if m and m.group(1).strip().upper() != "TOTALES":
             informe["alumnos"].append({"alumno": re.sub(r"\s+", " ", m.group(1)).strip(),
-                                       "fi": int(m.group(3))})
+                                       "fj": int(m.group(2)), "fi": int(m.group(3))})
     if not informe["modulo"]:
         raise ErrorInforme("No se encuentra el nombre del módulo")
     if not informe["alumnos"]:
@@ -469,7 +512,8 @@ def glob_literal(nombre):
 CAMPOS_REGISTRO = ["fecha_informe", "grupo", "modulo", "nombre_modulo", "profesor", "alumno",
                    "tipo", "faltas_injustificadas", "umbral", "documento", "fecha_proceso",
                    "estado", "fecha_anulacion", "motivo_anulacion",
-                   "generado_por", "fecha_entrega", "entregado_por", "anulado_por"]
+                   "generado_por", "fecha_entrega", "entregado_por", "anulado_por",
+                   "faltas_justificadas", "criterio"]
 ANULADO = "anulado"
 
 
@@ -666,16 +710,18 @@ def texto_correo(fila, firma, config, alumno=None):
     """Asunto y texto (HTML) del correo que acompaña a un aviso (alumno: nombre corregido, si lo hay)."""
     alumno = nombre_completo(alumno or fila["alumno"])
     modulo, grupo, fecha = fila["nombre_modulo"], fila["grupo"], fecha_legible(fila["fecha_informe"])
+    tus_faltas = "tus faltas de asistencia (injustificadas y justificadas)" if fila.get("criterio") == FI_FJ \
+        else "tus faltas injustificadas"
     if fila["tipo"] == AVISO:
         asunto = f"Aviso de pérdida de evaluación continua - {modulo} ({grupo})"
         que = (f"el <b>aviso de pérdida de la evaluación continua</b> en el módulo <b>{escape(modulo)}</b> "
-               f"({escape(grupo)}): según el informe de faltas del {fecha}, tus faltas injustificadas "
+               f"({escape(grupo)}): según el informe de faltas del {fecha}, {tus_faltas} "
                f"superan el 7,5 % de las horas del módulo")
     else:
         asunto = f"Pérdida de evaluación continua - {modulo} ({grupo})"
         que = (f"la <b>confirmación de la pérdida de la evaluación continua</b> en el módulo "
-               f"<b>{escape(modulo)}</b> ({escape(grupo)}): según el informe de faltas del {fecha}, tus "
-               f"faltas injustificadas superan el 15 % de las horas del módulo")
+               f"<b>{escape(modulo)}</b> ({escape(grupo)}): según el informe de faltas del {fecha}, "
+               f"{tus_faltas} superan el 15 % de las horas del módulo")
     html = (f'<html><head><meta charset="utf-8"></head><body>'
             f"<p>Hola, {escape(alumno)}:</p>"
             f"<p>Te envío adjunto {que}.</p>"
@@ -826,7 +872,34 @@ def migrar_5_a_6(datos, antigua):
     return [f"Bajas del alumnado: pasan a {BAJAS} ({len(nuevas)}, en todos los módulos de su grupo)"]
 
 
-MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4, 4: migrar_4_a_5, 5: migrar_5_a_6}
+def migrar_6_a_7(datos, antigua):
+    """
+    Criterio de faltas por módulo: los módulos que ya había siguen contando solo las FI (como hasta ahora) y el
+    registro gana las columnas de las FJ y del criterio de cada aviso (los anteriores se hicieron con «FI»).
+    """
+    hechos = []
+    if (datos / HOJA_MODULOS).exists():
+        libro = load_workbook(datos / HOJA_MODULOS)
+        hoja = libro[PESTANA_MODULOS]
+        poner_cabecera_criterio(hoja)
+        n = 0
+        for fila in range(2, hoja.max_row + 1):
+            if hoja.cell(fila, 1).value and not hoja.cell(fila, COLUMNA_CRITERIO).value:
+                hoja.cell(fila, COLUMNA_CRITERIO).value = CRITERIO_ANTERIOR
+                n += 1
+        libro.save(datos / HOJA_MODULOS)
+        hechos.append(f"Módulos: {n} siguen contando solo las faltas injustificadas (FI), como hasta ahora; "
+                      f"el criterio de cada uno se puede cambiar en la pestaña Módulos")
+    if (datos / REGISTRO).exists():
+        registro = leer_registro(datos / REGISTRO)
+        for fila in registro:
+            fila["criterio"] = fila["criterio"] or CRITERIO_ANTERIOR
+        escribir_registro(datos / REGISTRO, registro)
+        hechos.append(f"{REGISTRO}: añadidas las columnas de faltas justificadas y del criterio de cada aviso")
+    return hechos
+
+
+MIGRACIONES = {2: migrar_2_a_3, 3: migrar_3_a_4, 4: migrar_4_a_5, 5: migrar_5_a_6, 6: migrar_6_a_7}
 
 
 def migrar_datos(datos, antigua=None):
@@ -868,13 +941,38 @@ def migrar_datos(datos, antigua=None):
     return hechos
 
 
-def evaluar(informe, modulo, registro):
-    """Situación de cada alumno que supera el 7,5 %: {alumno, fi, tipo (o None), estado}."""
+def faltas_del_aviso(fila):
+    """Faltas con las que se emitió un aviso del registro: «8 FI» o «8 FI + 2 FJ»."""
+    fj = fila.get("faltas_justificadas", "")
+    return f"{fila['faltas_injustificadas']} FI" + (f" + {fj} FJ" if fj not in ("", "0") else "")
+
+
+def mas_faltas_que_al_avisar(alumno, aviso, criterio):
+    """
+    ¿Tiene más faltas que cuando se le avisó? Se cuentan con el criterio actual del módulo. Si se avisó
+    antes de la 3.40 (no se guardaban las FJ) y ahora cuentan las FJ, se comparan solo las FI: así nadie
+    pierde la evaluación continua solo por haber cambiado el criterio.
+    """
+    fi_aviso = int(aviso["faltas_injustificadas"] or 0)
+    fj_aviso = aviso.get("faltas_justificadas", "")
+    if criterio == FI_FJ and fj_aviso != "":
+        return faltas_que_cuentan(alumno, FI_FJ) > fi_aviso + int(fj_aviso)
+    return alumno["fi"] > fi_aviso
+
+
+def evaluar(informe, modulo, registro, criterio=None, posterior=False):
+    """
+    Situación de cada alumno que supera el 7,5 %: {alumno, fi, fj, faltas, criterio, tipo (o None), estado}.
+    criterio: el del módulo si no se indica otro (simulación). posterior: como si fuera un informe posterior a
+    todos los avisos (para simular qué saldría con el siguiente informe si las faltas no cambian).
+    """
+    criterio = criterio or modulo["criterio"]
     fecha = informe["fecha"].isoformat()
     grupo, siglas = informe["unidad"], modulo["siglas"]
     resultado = []
     for a in informe["alumnos"]:
-        if a["fi"] < modulo["umbral_75"]:
+        faltas = faltas_que_cuentan(a, criterio)
+        if faltas < modulo["umbral_75"]:
             continue
         aviso = buscar_en_registro(registro, grupo, siglas, a["alumno"], AVISO)
         pec = buscar_en_registro(registro, grupo, siglas, a["alumno"], PEC)
@@ -883,15 +981,21 @@ def evaluar(informe, modulo, registro):
             tipo, estado = AVISO, "Aviso del 7,5 %"
         elif pec:
             estado = f"Pérdida ya emitida ({fecha_legible(pec['fecha_informe'])})"
-        elif a["fi"] < modulo["umbral_15"]:
+        elif faltas < modulo["umbral_15"]:
             estado = f"Ya avisado ({fecha_legible(aviso['fecha_informe'])})"
-        elif fecha > aviso["fecha_informe"] and a["fi"] > int(aviso["faltas_injustificadas"]):
+        elif (posterior or fecha > aviso["fecha_informe"]) and mas_faltas_que_al_avisar(a, aviso, criterio):
             tipo, estado = PEC, "Pérdida del 15 %"
         else:
             estado = (f"Supera el 15 %, pero se le avisó el {fecha_legible(aviso['fecha_informe'])} "
-                      f"con {aviso['faltas_injustificadas']} FI: espera a nuevas faltas")
-        resultado.append({"alumno": a["alumno"], "fi": a["fi"], "tipo": tipo, "estado": estado})
+                      f"con {faltas_del_aviso(aviso)}: espera a nuevas faltas")
+        resultado.append({"alumno": a["alumno"], "fi": a["fi"], "fj": a.get("fj", 0), "faltas": faltas,
+                          "criterio": criterio, "tipo": tipo, "estado": estado})
     return resultado
+
+
+def porcentaje(faltas, modulo):
+    """Faltas en % de las horas del módulo, con una cifra decimal y coma: «8,5»."""
+    return formato_umbral(round(faltas * 100 / modulo["horas"], 1))
 
 
 def fecha_legible(iso):
@@ -1083,7 +1187,8 @@ def texto_casilla(c):
         return "—"
     if c["estado"] == "baja":
         return "Baja"
-    texto = f"{c['fi']} FI · {c['porcentaje']} %"
+    fj = "" if not c.get("fj") else f" + {c['fj']} FJ" if c.get("criterio") == FI_FJ else f" ({c['fj']} FJ)"
+    texto = f"{c['fi']} FI{fj} · {c['porcentaje']} %"
     if c["estado"] == "aviso":
         texto += f"\nAviso {c['fecha_aviso'][:5]}" + (" (≥ 15 %)" if c.get("supera_15") else "")
     elif c["estado"] == "perdida":
@@ -1204,6 +1309,7 @@ class Motor:
                 "siglas": siglas_propuestas(informe["modulo"],
                                             hoja.siglas_usadas(informe["unidad"])),
                 "nombre": informe["modulo"].upper(),
+                "criterio": CRITERIO_NUEVOS,
             }
             return item, informe
         item["datos_modulo"] = {
@@ -1211,6 +1317,7 @@ class Motor:
             "horas": formato_umbral(modulo["horas"]),
             "umbral_75": formato_umbral(modulo["umbral_75"]),
             "umbral_15": formato_umbral(modulo["umbral_15"]),
+            "criterio": modulo["criterio"],
         }
         item["nombre_final"] = self._nombre_informe(config, informe, modulo)
         if carpeta == NUEVOS and (self.base / PROCESADOS / item["nombre_final"]).exists():
@@ -1318,6 +1425,7 @@ class Motor:
                     "fecha_informe": fecha.isoformat(), "grupo": grupo, "modulo": siglas,
                     "nombre_modulo": modulo["nombre"], "profesor": informe["profesor"],
                     "alumno": a["alumno"], "tipo": a["tipo"], "faltas_injustificadas": a["fi"],
+                    "faltas_justificadas": a["fj"], "criterio": a["criterio"],
                     "umbral": formato_umbral(modulo["umbral_75" if a["tipo"] == AVISO
                                                     else "umbral_15"]),
                     "fecha_proceso": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1342,13 +1450,19 @@ class Motor:
             raise ErrorPEC("Falta el nombre del profesor/a para la firma")
         self.hoja().guardar_profesor(profesor.strip(), firma)
 
-    def registrar_modulo(self, unidad, en_informe, profesor, horas, siglas, nombre):
+    def registrar_modulo(self, unidad, en_informe, profesor, horas, siglas, nombre, criterio=CRITERIO_NUEVOS):
         hoja = self.hoja()
         if hoja.buscar_modulo(unidad, en_informe):
             raise ErrorPEC(f"El módulo «{en_informe}» de {unidad} ya está registrado")
         horas, siglas = self._validar_modulo(hoja, unidad, horas, siglas)
         hoja.anadir_modulo(unidad, siglas, en_informe, (nombre or en_informe).strip(),
-                           profesor, horas)
+                           profesor, horas, self._validar_criterio(criterio))
+
+    @staticmethod
+    def _validar_criterio(criterio):
+        if criterio not in CRITERIOS:
+            raise ErrorPEC(f"Criterio de faltas no válido: {criterio}")
+        return criterio
 
     @staticmethod
     def _validar_modulo(hoja, unidad, horas, siglas, salvo_fila=None):
@@ -1375,15 +1489,17 @@ class Motor:
             "modulos": [dict(m, horas=formato_umbral(m["horas"]),
                              umbral_75=formato_umbral(m["umbral_75"]),
                              umbral_15=formato_umbral(m["umbral_15"]),
+                             nombre_criterio=CRITERIOS[m["criterio"]],
                              con_avisos=(normalizar(m["unidad"]), normalizar(m["siglas"]))
                              in con_avisos)
                         for m in hoja.modulos],
             "profesores": [{"profesor": p[1], "firma": p[2]}
                            for p in sorted(hoja.profesores.values())],
             "errores": hoja.errores,
+            "criterios": CRITERIOS,
         }
 
-    def actualizar_modulo(self, fila, horas, nombre, siglas):
+    def actualizar_modulo(self, fila, horas, nombre, siglas, criterio=None):
         hoja = self.hoja()
         actual = next((m for m in hoja.modulos if m["fila"] == int(fila)), None)
         if actual is None:
@@ -1394,8 +1510,11 @@ class Motor:
                 (normalizar(f["grupo"]), normalizar(f["modulo"])) ==
                 (normalizar(actual["unidad"]), normalizar(actual["siglas"])) for f in registro):
             raise ErrorPEC("No se pueden cambiar las siglas de un módulo que ya tiene avisos")
+        criterio = self._validar_criterio(criterio or actual["criterio"])
         hoja.actualizar_modulo(actual["fila"], horas, (nombre or actual["en_informe"]).strip(),
-                               siglas)
+                               siglas, criterio)
+        return {"criterio_anterior": actual["criterio"], "criterio": criterio,
+                "modulo": f"{actual['unidad']} {siglas}"}
 
     def borrar_modulo(self, fila):
         hoja = self.hoja()
@@ -1490,6 +1609,8 @@ class Motor:
                 "tipo": tipo, "alumno": ficha.get("nombre", ""),
                 "grupo": fila.get("grupo", ""), "modulo": fila.get("nombre_modulo", ""),
                 "fi": fila.get("faltas_injustificadas", ""),
+                "fj": fila.get("faltas_justificadas", ""),
+                "criterio": fila.get("criterio", ""),
                 "fecha": fecha_legible(fila.get("fecha_informe", "")),
                 "orden": fila.get("fecha_informe", ""),
                 "pdf": ruta.suffix.lower() == ".pdf",
@@ -1653,14 +1774,7 @@ class Motor:
         hoja = self.hoja()
         registro = leer_registro(self.base / REGISTRO)
         fichas, claves_bajas = self._fichas(), self._claves_bajas()
-        ultimos = {}
-        for ruta in self._pdfs(PROCESADOS):
-            informe = self._informe_procesado(ruta)
-            if informe is None:
-                continue
-            clave = (normalizar(informe["unidad"]), normalizar(informe["modulo"]))
-            if clave not in ultimos or (informe["fecha"], ruta.name) > (ultimos[clave][0]["fecha"], ultimos[clave][1]):
-                ultimos[clave] = (informe, ruta.name)
+        ultimos = self._ultimos_informes()
         alumnos, sin_modulo = [], []
         for informe, archivo in ultimos.values():
             modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
@@ -1674,16 +1788,18 @@ class Motor:
                 ficha = ficha_de(fichas, grupo, a["alumno"])
                 aviso = buscar_en_registro(registro, grupo, siglas, a["alumno"], AVISO)
                 perdida = buscar_en_registro(registro, grupo, siglas, a["alumno"], PEC)
+                faltas = faltas_que_cuentan(a, modulo["criterio"])
                 estado = "perdida" if perdida else "aviso" if aviso else \
-                    "supera" if a["fi"] >= modulo["umbral_75"] else "sin_avisos"
+                    "supera" if faltas >= modulo["umbral_75"] else "sin_avisos"
                 alumnos.append({
                     "alumno": ficha["nombre"], "en_raices": a["alumno"], "grupo": grupo, "siglas": siglas, "modulo": modulo["nombre"],
                     "profesor": hoja.firma(informe["profesor"]) or informe["profesor"],
-                    "fi": a["fi"], "horas": formato_umbral(modulo["horas"]),
-                    "porcentaje": formato_umbral(round(a["fi"] * 100 / modulo["horas"], 1)),
+                    "fi": a["fi"], "fj": a.get("fj", 0), "faltas": faltas, "criterio": modulo["criterio"],
+                    "horas": formato_umbral(modulo["horas"]),
+                    "porcentaje": porcentaje(faltas, modulo),
                     "umbral_75": formato_umbral(modulo["umbral_75"]),
                     "umbral_15": formato_umbral(modulo["umbral_15"]),
-                    "supera_15": a["fi"] >= modulo["umbral_15"],
+                    "supera_15": faltas >= modulo["umbral_15"],
                     "estado": estado, "informe": informe["fecha"].strftime("%d/%m/%Y"),
                     "fecha_aviso": fecha_legible(aviso["fecha_informe"]) if aviso else "",
                     "fecha_perdida": fecha_legible(perdida["fecha_informe"]) if perdida else "",
@@ -1697,6 +1813,75 @@ class Motor:
                  for b in leer_bajas(self.base / BAJAS)]
         bajas.sort(key=lambda b: (b["grupo"], normalizar(b["nombre"]), b["modulo"]))
         return {"alumnos": alumnos, "informes": len(ultimos), "sin_modulo": sin_modulo, "bajas": bajas}
+
+    def _ultimos_informes(self):
+        """Último informe procesado de cada módulo: {(unidad, módulo en el informe): (informe, fichero)}."""
+        ultimos = {}
+        for ruta in self._pdfs(PROCESADOS):
+            informe = self._informe_procesado(ruta)
+            if informe is None:
+                continue
+            clave = (normalizar(informe["unidad"]), normalizar(informe["modulo"]))
+            if clave not in ultimos or (informe["fecha"], ruta.name) > (ultimos[clave][0]["fecha"], ultimos[clave][1]):
+                ultimos[clave] = (informe, ruta.name)
+        return ultimos
+
+    # ---- simulación con el otro criterio de faltas
+
+    def simulacion(self, unidad="", siglas="", criterio=""):
+        """
+        Qué cambiaría si un módulo contara las faltas con el otro criterio (o con criterio, si se indica),
+        según su último informe procesado y como si llegara un informe nuevo con las mismas faltas. No genera
+        ni guarda nada. Sin unidad ni siglas, todos los módulos con informes.
+        Devuelve {modulos: [{..., alumnos: [...], nuevos_avisos, nuevas_perdidas, ...}]}.
+        """
+        hoja = self.hoja()
+        registro = leer_registro(self.base / REGISTRO)
+        fichas, bajas = self._fichas(), self._claves_bajas()
+        resultado = []
+        for informe, archivo in self._ultimos_informes().values():
+            modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
+            if modulo is None or (unidad and normalizar(modulo["unidad"]) != normalizar(unidad)) or \
+                    (siglas and normalizar(modulo["siglas"]) != normalizar(siglas)):
+                continue
+            actual = modulo["criterio"]
+            simulado = criterio if criterio in CRITERIOS else otro_criterio(actual)
+            grupo = informe["unidad"]
+
+            def situacion(con):
+                return {a["alumno"]: a for a in evaluar(informe, modulo, registro, con, posterior=True)
+                        if not de_baja(bajas, grupo, a["alumno"], modulo["siglas"])}
+            con_actual, con_simulado = situacion(actual), situacion(simulado)
+            alumnos = []
+            for a in informe["alumnos"]:
+                if a["alumno"] not in con_actual and a["alumno"] not in con_simulado:
+                    continue  # no llega al 7,5 % con ninguno de los dos criterios
+                x, y = con_actual.get(a["alumno"]), con_simulado.get(a["alumno"])
+                alumnos.append({
+                    "alumno": ficha_de(fichas, grupo, a["alumno"])["nombre"], "fi": a["fi"], "fj": a["fj"],
+                    "porcentaje_actual": porcentaje(faltas_que_cuentan(a, actual), modulo),
+                    "porcentaje_simulado": porcentaje(faltas_que_cuentan(a, simulado), modulo),
+                    "tipo_actual": x["tipo"] if x else None, "estado_actual": x["estado"] if x else "No llega al 7,5 %",
+                    "tipo_simulado": y["tipo"] if y else None,
+                    "estado_simulado": y["estado"] if y else "No llega al 7,5 %",
+                    "cambia": (x or {}).get("tipo") != (y or {}).get("tipo"),
+                })
+            alumnos.sort(key=lambda a: normalizar(a["alumno"]))
+            nuevos = [a for a in alumnos if a["tipo_simulado"] and a["tipo_simulado"] != a["tipo_actual"]]
+            resultado.append({
+                "unidad": modulo["unidad"], "siglas": modulo["siglas"], "nombre": modulo["nombre"], "fila": modulo["fila"],
+                "profesor": hoja.firma(informe["profesor"]) or informe["profesor"],
+                "informe": informe["fecha"].strftime("%d/%m/%Y"), "horas": formato_umbral(modulo["horas"]),
+                "umbral_75": formato_umbral(modulo["umbral_75"]), "umbral_15": formato_umbral(modulo["umbral_15"]),
+                "criterio_actual": actual, "criterio_simulado": simulado,
+                "nombre_actual": CRITERIOS[actual], "nombre_simulado": CRITERIOS[simulado],
+                "alumnos": alumnos,
+                "nuevos_avisos": sum(a["tipo_simulado"] == AVISO for a in nuevos),
+                "nuevas_perdidas": sum(a["tipo_simulado"] == PEC for a in nuevos),
+                "dejan_de_salir": sum(1 for a in alumnos if a["tipo_actual"] and not a["tipo_simulado"]),
+            })
+        resultado.sort(key=lambda m: (m["profesor"], m["unidad"], m["siglas"]))
+        return {"modulos": resultado}
 
     # ---- informe para la sesión de evaluación
 
@@ -1713,11 +1898,12 @@ class Motor:
             g = grupos.setdefault(a["grupo"], {"grupo": a["grupo"], "modulos": {}, "alumnos": {}, "bajas": []})
             g["modulos"].setdefault(a["siglas"], {
                 "siglas": a["siglas"], "nombre": a["modulo"], "horas": a["horas"], "umbral_75": a["umbral_75"],
-                "umbral_15": a["umbral_15"], "profesor": a["profesor"], "informe": a["informe"]})
+                "umbral_15": a["umbral_15"], "profesor": a["profesor"], "informe": a["informe"],
+                "criterio": a["criterio"]})
             fila = g["alumnos"].setdefault(clave_alumno(a["en_raices"]), {
                 "nombre": a["alumno"], "correo": a["correo"], "modulos": {}})
-            fila["modulos"][a["siglas"]] = {k: a[k] for k in ("fi", "porcentaje", "estado", "fecha_aviso",
-                                                              "fecha_perdida", "supera_15")}
+            fila["modulos"][a["siglas"]] = {k: a[k] for k in ("fi", "fj", "criterio", "porcentaje", "estado",
+                                                              "fecha_aviso", "fecha_perdida", "supera_15")}
         for b in situacion["bajas"]:
             if b["grupo"] in grupos:
                 grupos[b["grupo"]]["bajas"].append(b)
@@ -1783,14 +1969,15 @@ class Motor:
                 for celda in hoja[hoja.max_row]:
                     celda.border = borde
             hoja.append([])
-            hoja.append(["Módulo", "Nombre", "Profesor/a", "Horas", "7,5 %", "15 %", "Último informe"])
+            hoja.append(["Módulo", "Nombre", "Profesor/a", "Horas", "7,5 %", "15 %", "Último informe", "Faltas que cuentan"])
             for celda in hoja[hoja.max_row]:
                 celda.font, celda.fill = Font(bold=True), cabecera
             for m in g["modulos"]:
                 hoja.append([m["siglas"], m["nombre"], m["profesor"], m["horas"], m["umbral_75"], m["umbral_15"],
-                             m["informe"]])
+                             m["informe"], CRITERIOS[m["criterio"]]])
             hoja.append([])
-            hoja.append(["Cada casilla: faltas injustificadas (FI) y % de horas del módulo. Aviso = aviso del 7,5 %; "
+            hoja.append(["Cada casilla: faltas injustificadas (FI) y justificadas (FJ) y % de horas del módulo, contando "
+                         "las faltas según el criterio de cada módulo (FI o FI + FJ; entre paréntesis, FJ que no cuentan). Aviso = aviso del 7,5 %; "
                          "Pérdida = pérdida del 15 %; «≥ 7,5 % sin aviso» = le corresponde un aviso que aún no "
                          "tiene; Baja = dado/a de baja en ese módulo; — = no está en el informe del módulo."])
             if g["bajas"]:

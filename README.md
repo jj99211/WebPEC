@@ -10,7 +10,7 @@ evaluación continua (Formación Profesional) a partir de los listados de faltas
 ## Descargar
 
 La última versión está siempre en **[Releases → Latest](../../releases/latest)**: descarga el fichero
-`WebPEC_vX.YY.zip` (no el «Source code»). Desde la versión 3.31, WebPEC avisa sola cuando hay una versión nueva.
+`WebPEC_vX.YY.zip` (no el «Source code»). Desde la versión 3.40, WebPEC avisa sola cuando hay una versión nueva.
 
 ## Instalar o actualizar
 

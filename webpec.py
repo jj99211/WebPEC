@@ -9,6 +9,9 @@ Uso:
   webpec.py                       arranca y abre el navegador
   webpec.py --sin-navegador       arranca sin abrir el navegador
   webpec.py --instalar            prepara los datos, crea el icono del escritorio y arranca
+  webpec.py --instalar --destino CARPETA
+                                  actualiza sin preguntas la instalación de CARPETA con esta versión
+                                  (lo usa «Actualizar ahora» desde dentro de WebPEC)
   webpec.py --crear-acceso-directo  solo crea el icono de WebPEC en el escritorio
 
 Licencia: Creative Commons BY-NC-SA 4.0 (ver LICENCIA.txt).
@@ -16,6 +19,8 @@ Licencia: Creative Commons BY-NC-SA 4.0 (ver LICENCIA.txt).
 
 import argparse
 import base64
+import filecmp
+import io
 import json
 import mimetypes
 import os
@@ -26,12 +31,16 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
+import urllib.error
+import urllib.request
 import webbrowser
+import zipfile
 from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 BASE = Path(__file__).resolve().parent
@@ -119,6 +128,10 @@ class Manejador(BaseHTTPRequestHandler):
 
     def _get(self, ruta, q):
         m = self.motor
+        if ruta == "/api/version":  # para saber, tras «Actualizar ahora», cuándo ha vuelto a arrancar
+            return self._json({"version": VERSION})
+        if ruta == "/api/actualizacion":  # fuera del cerrojo: consulta Internet y puede tardar unos segundos
+            return self._json(comprobar_actualizacion(m.config(), forzar="forzar" in q))
         if ruta in ("/", "/index.html"):
             return self._estatico("index.html")
         if ruta.startswith("/web/"):
@@ -146,6 +159,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._json({"usuarios": m.usuarios()})
             if ruta == "/api/alumnado":
                 return self._json(m.situacion_alumnado())
+            if ruta == "/api/simulacion":
+                return self._json(m.simulacion(q.get("unidad", ""), q.get("siglas", ""), q.get("criterio", "")))
             if ruta == "/api/actividad":
                 return self._json(m.actividad())
             if ruta == "/datos/exportar":
@@ -210,6 +225,19 @@ class Manejador(BaseHTTPRequestHandler):
             print("\nWebPEC cerrado desde el navegador")
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
+        if ruta == "/api/actualizar":
+            self._leer_json()
+            usuario = self._usuario(q)
+            if not usuario:
+                raise ErrorPEC("Indica quién eres (arriba a la derecha) antes de actualizar")
+            with CERROJO:
+                r = descargar_actualizacion(m.config())
+                m.usuario = usuario
+                m.anotar_actividad("Actualizar WebPEC", f"{VERSION} → {r['version']}")
+            self._json(r)
+            print(f"\nActualizando WebPEC a la versión {r['version']}…")
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         datos = self._cuerpo() if ruta in FICHEROS_SUBIDOS else self._leer_json()
         usuario = self._usuario(q)
         if not usuario and ruta != "/api/profesor/nuevo":
@@ -255,12 +283,17 @@ class Manejador(BaseHTTPRequestHandler):
             m.borrar_profesor(d.get("profesor", ""))
             return {"ok": True}, "Borrar profesor/a", d.get("profesor", "")
         if ruta == "/api/modulo":
+            criterio = d.get("criterio") or motor_pec.CRITERIO_NUEVOS
             m.registrar_modulo(d.get("unidad"), d.get("en_informe"), d.get("profesor", ""),
-                               d.get("horas"), d.get("siglas"), d.get("nombre"))
-            return {"ok": True}, "Registrar módulo", f"{d.get('unidad')} {d.get('siglas')}: {d.get('horas')} h"
+                               d.get("horas"), d.get("siglas"), d.get("nombre"), criterio)
+            return {"ok": True}, "Registrar módulo", \
+                f"{d.get('unidad')} {d.get('siglas')}: {d.get('horas')} h, cuentan {criterio}"
         if ruta == "/api/modulo/actualizar":
-            m.actualizar_modulo(d.get("fila"), d.get("horas"), d.get("nombre"), d.get("siglas"))
-            return {"ok": True}, "Cambiar módulo", f"{d.get('siglas')}: {d.get('nombre')}, {d.get('horas')} h"
+            r = m.actualizar_modulo(d.get("fila"), d.get("horas"), d.get("nombre"), d.get("siglas"), d.get("criterio"))
+            cambio = f"; criterio de faltas: {r['criterio_anterior']} → {r['criterio']}" \
+                if r["criterio"] != r["criterio_anterior"] else ""
+            return dict(r, ok=True), "Cambiar módulo", \
+                f"{r['modulo']}: {d.get('nombre')}, {d.get('horas')} h{cambio}"
         if ruta == "/api/modulo/borrar":
             m.borrar_modulo(d.get("fila"))
             return {"ok": True}, "Borrar módulo", f"fila {d.get('fila')}"
@@ -417,7 +450,9 @@ def evaluacion_html(datos):
         marca = {"aviso": f'<b>Aviso</b> {e(c["fecha_aviso"][:5])}' + (" · ≥ 15 %" if c.get("supera_15") else ""),
                  "perdida": f'<b>Pérdida</b> {e(c["fecha_perdida"][:5])}',
                  "supera": "<b>≥ 7,5 %</b> sin aviso"}.get(c["estado"], "")
-        return (f'<td class="{c["estado"]}"><span class="fi">{c["fi"]}</span> <span class="pc">{e(c["porcentaje"])} %</span>'
+        fj = f' <span class="fj">+ {c["fj"]} FJ</span>' if c.get("fj") and c.get("criterio") == motor_pec.FI_FJ else \
+            (f' <span class="fj no-cuenta" title="Justificadas: en este módulo no cuentan">({c["fj"]} FJ)</span>' if c.get("fj") else "")
+        return (f'<td class="{c["estado"]}"><span class="fi">{c["fi"]} FI</span>{fj} <span class="pc">{e(c["porcentaje"])} %</span>'
                 + (f'<span class="marca">{marca}</span>' if marca else "") + "</td>")
 
     secciones = []
@@ -432,7 +467,8 @@ def evaluacion_html(datos):
         modulos = "".join(
             f'<tr><td><b>{e(m["siglas"])}</b></td><td>{e(m["nombre"])}</td><td>{e(m["profesor"])}</td>'
             f'<td class="num">{e(m["horas"])}</td><td class="num">{e(m["umbral_75"])}</td>'
-            f'<td class="num">{e(m["umbral_15"])}</td><td>{e(m["informe"])}</td></tr>' for m in g["modulos"])
+            f'<td class="num">{e(m["umbral_15"])}</td><td>{e(m["informe"])}</td>'
+            f'<td>{e(motor_pec.CRITERIOS[m["criterio"]])}</td></tr>' for m in g["modulos"])
         bajas = "" if not g["bajas"] else (
             '<h3>Alumnado dado de baja</h3><table class="lista"><tr><th>Alumno/a</th><th>Módulo</th><th>Fecha</th>'
             '<th>Motivo</th></tr>' + "".join(
@@ -441,19 +477,21 @@ def evaluacion_html(datos):
                 for b in g["bajas"]) + "</table>")
         secciones.append(f"""<section>
 <div class="titulo"><img src="{escudo_en_linea()}" alt=""><div><h1>Grupo {e(g["grupo"])}</h1>
-<p>{e(datos["centro"])} · Faltas injustificadas y avisos de pérdida de evaluación continua · {e(datos["fecha"])}</p></div></div>
+<p>{e(datos["centro"])} · Faltas y avisos de pérdida de evaluación continua · {e(datos["fecha"])}</p></div></div>
 <ul class="resumen"><li><b>{r["alumnos"]}</b> alumnos/as</li>
 <li><b>{r["con_aviso"]}</b> con aviso del 7,5 % ({r["avisos"]} {"aviso" if r["avisos"] == 1 else "avisos"})</li>
 <li><b>{r["con_perdida"]}</b> con pérdida del 15 % ({r["perdidas"]} {"pérdida" if r["perdidas"] == 1 else "pérdidas"})</li>
 {f'<li class="ojo"><b>{r["supera"]}</b> superan el 7,5 % sin aviso</li>' if r["supera"] else ""}</ul>
 <table class="matriz"><thead><tr><th class="alumno">Alumno/a</th>{cabeza}<th>Avisos<br>7,5 %</th><th>Pérdidas<br>15 %</th></tr></thead>
 <tbody>{filas}</tbody></table>
-<p class="leyenda">Cada casilla: faltas injustificadas (FI) y % de las horas del módulo, según el último informe procesado.
+<p class="leyenda">Cada casilla: faltas injustificadas (FI), justificadas (FJ) y % de las horas del módulo, según el último
+informe procesado. El % cuenta las faltas según el criterio del módulo (tabla de abajo): con «solo FI», las FJ van entre
+paréntesis y no cuentan.
 <span class="aviso">Aviso</span> aviso del 7,5 % (fecha del informe) · <span class="perdida">Pérdida</span> pérdida del 15 % ·
 <span class="supera">≥ 7,5 % sin aviso</span> le corresponde un aviso que aún no tiene · <span class="baja">Baja</span> dado/a de
 baja en ese módulo · — no aparece en el informe del módulo.</p>
 <h3>Módulos</h3><table class="lista"><tr><th>Siglas</th><th>Módulo</th><th>Profesor/a</th><th>Horas</th><th>7,5 %</th>
-<th>15 %</th><th>Último informe</th></tr>{modulos}</table>
+<th>15 %</th><th>Último informe</th><th>Faltas que cuentan</th></tr>{modulos}</table>
 {bajas}</section>""")
     if not secciones:
         secciones.append("<section><p>No hay informes procesados con datos de alumnado.</p></section>")
@@ -481,6 +519,7 @@ baja en ese módulo · — no aparece en el informe del módulo.</p>
   .matriz {{ width: auto; min-width: 55%; }} .matriz td, .matriz th {{ min-width: 82px; }}
   .matriz th.alumno, .matriz td.alumno {{ text-align: left; min-width: 250px; }}
   .fi {{ font-weight: 700; }} .pc {{ color: var(--suave); font-size: 11.5px; }}
+  .fj {{ font-weight: 600; }} .fj.no-cuenta {{ font-weight: 400; color: var(--suave); }}
   .marca {{ display: block; font-size: 11px; }}
   .aviso {{ background: #fef3c7; }} .perdida {{ background: #ffe4e6; }} .supera {{ background: #e0e7ff; }}
   .baja {{ background: #e2e8f0; color: var(--suave); }} .nada {{ color: var(--suave); }}
@@ -548,6 +587,140 @@ def ya_en_marcha(puerto):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
         return s.connect_ex(("127.0.0.1", puerto)) == 0
+
+
+# ------------------------------------------------------ actualizaciones ---
+# Las versiones se publican en GitHub (Releases), con el ZIP como fichero adjunto. La última se averigua
+# mirando adónde redirige la página «latest» (…/releases/tag/vX.YY): no se usa la API de GitHub, que solo
+# admite 60 consultas por hora desde una misma dirección (todo el instituto sale a Internet con una).
+# No se envía ningún dato: solo se pide esa página y, al actualizar, el ZIP.
+
+# WEBPEC_REPOSITORIO: otra dirección con la misma estructura (solo para pruebas)
+REPOSITORIO = os.environ.get("WEBPEC_REPOSITORIO", "https://github.com/jj99211/WebPEC").rstrip("/")
+ULTIMA_VERSION = REPOSITORIO + "/releases/latest"
+CONSULTA_CADA = 6 * 3600       # como mucho, una consulta cada 6 horas (salvo «Comprobar ahora»)
+MAXIMO_ZIP = 100 * 1024 * 1024
+PREFIJO_TEMPORAL = "WebPEC_actualizacion_"
+_consulta = {"cuando": 0.0, "datos": None}
+PENDIENTE = {}  # versión descargada cuyo instalador se lanza al apagar el servidor
+
+
+class _SinRedireccion(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def peticion(url, metodo="GET"):
+    return urllib.request.Request(url, method=metodo, headers={"User-Agent": f"WebPEC/{VERSION}"})
+
+
+def ultima_publicada():
+    """Número de la última versión publicada en GitHub («3.40»)."""
+    destino = ""
+    try:
+        urllib.request.build_opener(_SinRedireccion).open(peticion(ULTIMA_VERSION, "HEAD"), timeout=8)
+    except urllib.error.HTTPError as e:
+        destino = e.headers.get("Location", "") if e.code in (301, 302, 303, 307, 308) else ""
+    m = re.search(r"/releases/tag/v(\d+\.\d+)/?$", destino)
+    if not m:
+        raise ErrorPEC("GitHub no ha indicado cuál es la última versión")
+    return m.group(1)
+
+
+def comprobar_actualizacion(config, forzar=False):
+    """¿Hay una versión más moderna en GitHub? Sin Internet, devuelve el error sin más."""
+    if config.get("buscar_actualizaciones") == "no" and not forzar:
+        return {"activada": False, "actual": VERSION}
+    if forzar or not _consulta["datos"] or time.time() - _consulta["cuando"] > CONSULTA_CADA:
+        try:
+            ultima = ultima_publicada()
+        except (OSError, ErrorPEC) as e:
+            motivo = getattr(e, "reason", None) or e
+            return {"activada": True, "actual": VERSION, "error": f"No se ha podido consultar GitHub ({motivo})",
+                    "descargas": ULTIMA_VERSION}
+        _consulta.update(cuando=time.time(), datos={
+            "activada": True, "actual": VERSION, "ultima": ultima,
+            "hay_nueva": numero_version(ultima) > numero_version(VERSION),
+            "novedades": f"{REPOSITORIO}/releases/tag/v{ultima}",
+            "zip": f"{REPOSITORIO}/releases/download/v{ultima}/WebPEC_v{ultima}.zip",
+            "descargas": ULTIMA_VERSION})
+    return _consulta["datos"]
+
+
+def limpiar_temporales(dias=1):
+    """Borra las carpetas de actualizaciones anteriores (las deja el instalador, que se ejecuta desde ellas)."""
+    limite = time.time() - dias * 24 * 3600
+    for carpeta in Path(tempfile.gettempdir()).glob(PREFIJO_TEMPORAL + "*"):
+        try:
+            if carpeta.is_dir() and carpeta.stat().st_mtime < limite:
+                shutil.rmtree(carpeta, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def se_puede_escribir(carpeta):
+    try:
+        with tempfile.NamedTemporaryFile(dir=carpeta):
+            return True
+    except OSError:
+        return False
+
+
+def descargar_actualizacion(config):
+    """
+    «Actualizar ahora»: descarga y comprueba el ZIP de la última versión y lo descomprime en una carpeta
+    temporal. Su instalador se lanza cuando se apaga el servidor (ver lanzar_instalador_descargado).
+    """
+    info = comprobar_actualizacion(config, forzar=True)
+    a_mano = f"Se puede descargar a mano desde {ULTIMA_VERSION}"
+    if info.get("error"):
+        raise ErrorPEC(f"{info['error']}. {a_mano}")
+    if not info["hay_nueva"]:
+        raise ErrorPEC(f"Ya tienes la última versión ({VERSION})")
+    if not se_puede_escribir(BASE):
+        raise ErrorPEC(f"No se puede escribir en la carpeta de WebPEC ({BASE}): pide ayuda para actualizarla. {a_mano}")
+    limpiar_temporales()
+    carpeta = Path(tempfile.mkdtemp(prefix=PREFIJO_TEMPORAL))
+    ultima = info["ultima"]
+    try:
+        with urllib.request.urlopen(peticion(info["zip"]), timeout=90) as r:
+            datos = r.read(MAXIMO_ZIP + 1)
+        if len(datos) > MAXIMO_ZIP:
+            raise ErrorPEC("el fichero descargado es demasiado grande")
+        with zipfile.ZipFile(io.BytesIO(datos)) as z:
+            nombres = z.namelist()
+            if any(not n.startswith("WebPEC/") or ".." in PurePosixPath(n).parts for n in nombres) or \
+                    "WebPEC/webpec.py" not in nombres or "WebPEC/VERSION" not in nombres:
+                raise ErrorPEC("el ZIP descargado no es un paquete de WebPEC")
+            if z.testzip() is not None:
+                raise ErrorPEC("el ZIP descargado está dañado")
+            if z.read("WebPEC/VERSION").decode("utf-8").strip() != ultima:
+                raise ErrorPEC("el ZIP descargado no es de la versión anunciada")
+            z.extractall(carpeta)
+    except (OSError, zipfile.BadZipFile, ErrorPEC) as e:
+        shutil.rmtree(carpeta, ignore_errors=True)
+        motivo = getattr(e, "reason", None) or e
+        raise ErrorPEC(f"No se ha podido descargar la versión {ultima} ({motivo}). {a_mano}")
+    for lanzador in (carpeta / "WebPEC").glob("*.sh"):
+        try:
+            lanzador.chmod(0o755)
+        except OSError:
+            pass
+    PENDIENTE.update(instalador=carpeta / "WebPEC" / "webpec.py", version=ultima)
+    return {"ok": True, "version": ultima}
+
+
+def lanzar_instalador_descargado():
+    """
+    Con el servidor ya apagado, el instalador de la versión descargada actualiza esta carpeta y arranca la
+    versión nueva. Todo sigue en esta misma ventana (este proceso espera a que termine).
+    """
+    print("=" * 62)
+    print(f"  Instalando WebPEC {PENDIENTE['version']} (los datos no se tocan)…")
+    print("=" * 62)
+    orden = [sys.executable, str(PENDIENTE["instalador"]), "--instalar", "--destino", str(BASE),
+             "--sin-navegador"]  # la pestaña del navegador ya abierta se recarga sola
+    sys.exit(subprocess.call(orden, cwd=str(BASE)))
 
 
 # ------------------------------------------------------- acceso directo ---
@@ -771,26 +944,64 @@ def elegir_destino():
     return destino.resolve()
 
 
-def esperar_cerrado(destino):
-    """Antes de sustituir el programa, la instalación de destino no debe estar en marcha."""
+def esperar_cerrado(destino, segundos=None):
+    """
+    Antes de sustituir el programa, la instalación de destino no debe estar en marcha. Sin segundos, pregunta
+    hasta que se cierre; con segundos (actualización sin preguntas), espera como mucho ese tiempo.
+    Devuelve True si está cerrada.
+    """
     puerto = int(configuracion_previa(destino / motor_pec.DATOS, destino)["puerto"])
+    limite = time.time() + (segundos or 0)
     while ya_en_marcha(puerto):
+        if segundos is not None:
+            if time.time() > limite:
+                return False
+            time.sleep(0.5)
+            continue
         print(f"  WebPEC está abierto (puerto {puerto}). Ciérralo con su botón de apagado.")
         if preguntar("  Pulsa Intro cuando esté cerrado (o escribe n para cancelar): ").lower() == "n":
             sys.exit("Instalación cancelada: no se ha cambiado nada.")
+    return True
+
+
+COPIAS_PROGRAMA = 3  # copias del programa que se guardan antes de actualizar (las más recientes)
+
+
+def copia_del_programa(destino):
+    """Copia del programa instalado en destino (sin los datos) en DATOS/COPIAS_SEGURIDAD/, por si hay que volver atrás."""
+    copias = destino / motor_pec.DATOS / motor_pec.COPIAS
+    copia = copias / f"programa_v{version_de(destino)}_{datetime.now():%Y%m%d_%H%M%S}"
+    copia.mkdir(parents=True)
+    for origen in destino.iterdir():
+        if origen.name not in NO_PROGRAMA:
+            copiar(origen, copia / origen.name)
+    for vieja in sorted(copias.glob("programa_v*"), key=lambda c: c.stat().st_mtime)[:-COPIAS_PROGRAMA]:
+        shutil.rmtree(vieja, ignore_errors=True)
+    return copia
+
+
+def copiar(origen, destino):
+    """
+    Copia un fichero o carpeta (sin __pycache__). Solo escribe los ficheros que cambian, y cada uno a través de
+    un temporal: así un lanzador en marcha (WebPEC.sh, WebPEC.bat) no se reescribe por debajo si no ha cambiado.
+    """
+    if origen.is_dir():
+        if origen.name != "__pycache__":
+            destino.mkdir(parents=True, exist_ok=True)
+            for hijo in origen.iterdir():
+                copiar(hijo, destino / hijo.name)
+    elif not (destino.is_file() and filecmp.cmp(origen, destino, shallow=False)):
+        temporal = destino.with_name(destino.name + ".nuevo")
+        shutil.copy2(origen, temporal)
+        os.replace(temporal, destino)
 
 
 def copiar_programa(destino):
     """Copia el programa (no los datos) a destino y quita los ficheros que ya no se usan."""
     destino.mkdir(parents=True, exist_ok=True)
     for origen in BASE.iterdir():
-        if origen.name in NO_PROGRAMA:
-            continue
-        if origen.is_dir():
-            shutil.copytree(origen, destino / origen.name, dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("__pycache__"))
-        else:
-            shutil.copy2(origen, destino / origen.name)
+        if origen.name not in NO_PROGRAMA:
+            copiar(origen, destino / origen.name)
     for nombre in OBSOLETOS:
         (destino / nombre).unlink(missing_ok=True)
     shutil.rmtree(destino / "__pycache__", ignore_errors=True)
@@ -819,6 +1030,8 @@ def instalar(preguntar_destino=True, sin_navegador=False):
             if preguntar("  ¿Instalar de todos modos? [s/N]: ").lower() != "s":
                 sys.exit("Instalación cancelada: no se ha cambiado nada.")
         esperar_cerrado(destino)
+        if (destino / "webpec.py").is_file():
+            print(f"  Copia del programa actual: {copia_del_programa(destino)}")
         print(f"  Copiando el programa a {destino} (los datos no se tocan)…")
         copiar_programa(destino)
         print(f"  Hecho. La carpeta descomprimida ({BASE}) ya no hace falta: puedes borrarla.")
@@ -835,6 +1048,41 @@ def instalar(preguntar_destino=True, sin_navegador=False):
     print()
 
 
+def actualizar_sin_preguntas(destino, sin_navegador=False):
+    """
+    --instalar --destino CARPETA: actualiza la instalación de CARPETA con esta versión, sin preguntas, y la arranca.
+    La lanza «Actualizar ahora» de la versión ANTERIOR: no cambiar el nombre ni el significado de estas opciones.
+    Si algo falla, la instalación se queda (o vuelve) como estaba y se arranca la versión que había.
+    """
+    print(f"  Instalación de WebPEC {VERSION} en {destino}")
+    error, copia = None, None
+    if not (destino / "webpec.py").is_file():
+        sys.exit(f"No hay ningún WebPEC en {destino}: no se ha cambiado nada.")
+    if numero_version(version_de(destino)) > numero_version(VERSION):
+        error = f"la versión instalada ({version_de(destino)}) es más moderna que esta"
+    elif not esperar_cerrado(destino, segundos=30):
+        error = "WebPEC sigue abierto"
+    else:
+        try:
+            copia = copia_del_programa(destino)
+            print(f"  Copia del programa actual: {copia}")
+            copiar_programa(destino)
+        except OSError as e:
+            error = f"no se ha podido copiar el programa nuevo ({e})"
+            if copia:
+                try:
+                    copiar(copia, destino)  # vuelve a dejar el programa como estaba
+                except OSError as e2:
+                    error += f"; tampoco se ha podido volver atrás ({e2}): la copia está en {copia}"
+    if error:
+        print(f"  NO SE HA ACTUALIZADO: {error}. Sigue la versión {version_de(destino)}.")
+    else:
+        print(f"  Hecho: WebPEC {VERSION} instalado.")
+    print()
+    orden = [sys.executable, str(destino / "webpec.py"), "--instalar", "--aqui"]
+    sys.exit(subprocess.call(orden + (["--sin-navegador"] if sin_navegador else []), cwd=destino))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -845,6 +1093,8 @@ def main():
     parser.add_argument("--instalar", action="store_true",
                         help="elegir carpeta, copiar el programa, crear el icono y arrancar")
     parser.add_argument("--aqui", action="store_true", help=argparse.SUPPRESS)  # instalar sin preguntar
+    parser.add_argument("--destino", type=Path,
+                        help="con --instalar: actualizar sin preguntas la instalación de esa carpeta")
     parser.add_argument("--crear-acceso-directo", action="store_true",
                         help="crear el icono de WebPEC en el escritorio y terminar")
     args = parser.parse_args()
@@ -857,6 +1107,8 @@ def main():
             sys.exit(f"No se ha podido crear el acceso directo: {e}")
         return
 
+    if args.instalar and args.destino:
+        actualizar_sin_preguntas(args.destino.resolve(), args.sin_navegador)
     if args.instalar:
         instalar(preguntar_destino=not args.aqui, sin_navegador=args.sin_navegador)
 
@@ -869,6 +1121,7 @@ def main():
             webbrowser.open(direccion_url)
         return
 
+    limpiar_temporales()
     mimetypes.add_type("application/javascript", ".js")
     mimetypes.add_type("image/svg+xml", ".svg")
     try:
@@ -902,8 +1155,11 @@ def main():
         servidor.serve_forever()
     except KeyboardInterrupt:
         print("\nWebPEC detenido")
+        PENDIENTE.clear()
     finally:
         servidor.server_close()
+    if PENDIENTE:  # «Actualizar ahora»: con el servidor apagado, se instala la versión descargada
+        lanzar_instalador_descargado()
 
 
 if __name__ == "__main__":

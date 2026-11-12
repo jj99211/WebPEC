@@ -91,6 +91,24 @@ const porQuien = nombre => nombre ? ` por ${esc(nombre)}` : "";
 
 function plural(n, uno, varios) { return `${n} ${n === 1 ? uno : varios}`; }
 
+// Criterio de faltas de cada módulo: solo injustificadas (FI) o injustificadas + justificadas (FI+FJ)
+const CRITERIOS = { "FI": "Solo injustificadas (FI)", "FI+FJ": "Injustificadas + justificadas (FI + FJ)" };
+const CRITERIO_FRASE = { "FI": "solo las faltas injustificadas (FI)", "FI+FJ": "las faltas injustificadas y las justificadas (FI + FJ)" };
+const CRITERIO_CORTO = { "FI": "solo FI", "FI+FJ": "FI + FJ" };
+
+/** «8 FI + 2 FJ»; si las FJ no cuentan con ese criterio, van entre paréntesis y en gris. */
+function textoFaltas(fi, fj, criterio) {
+  if (fi === "" || fi === undefined) return "";
+  if (!fj || fj === "0") return `${esc(fi)} FI`;
+  return criterio === "FI+FJ" ? `${esc(fi)} FI + ${esc(fj)} FJ`
+    : `${esc(fi)} FI <span class="fj-no-cuenta" title="Justificadas: con «solo FI» no cuentan">(${esc(fj)} FJ)</span>`;
+}
+
+function opcionesCriterio(elegido, corto = false) {
+  return Object.entries(corto ? { "FI": "Solo FI", "FI+FJ": "FI + FJ" } : CRITERIOS).map(([valor, texto]) =>
+    `<option value="${valor}" ${valor === elegido ? "selected" : ""} title="${CRITERIOS[valor]}">${texto}</option>`).join("");
+}
+
 function guardarPreferencia(clave, valor) { try { localStorage.setItem(clave, valor); } catch (e) { /* sin almacenamiento */ } }
 function leerPreferencia(clave) { try { return localStorage.getItem(clave) || ""; } catch (e) { return ""; } }
 
@@ -212,7 +230,7 @@ function pintarResultado(r) {
     const informes = r.informes.map(i => `
       <h4>${esc(i.modulo)} <small>· ${esc(i.unidad)} · informe del ${esc(i.fecha)} · ${esc(i.profesor)}</small></h4>
       ${i.situacion.length ? `<table class="alumnos">${i.situacion.map(a => `
-        <tr class="${a.tipo ? "" : "nada"}"><td>${esc(a.alumno)}</td><td class="num">${a.fi} FI</td>
+        <tr class="${a.tipo ? "" : "nada"}"><td>${esc(a.alumno)}</td><td class="num">${textoFaltas(a.fi, a.fj, a.criterio)}</td>
         <td>${a.tipo ? chipTipo(a.tipo) : `<span class="secundario">${esc(a.estado)}</span>`}</td></tr>`).join("")}</table>`
         : '<p class="sin-avisos">Ningún alumno llega al 7,5 %.</p>'}`).join("");
     const mensajes = r.mensajes.map(m => `<p class="nota">⚠ ${esc(m)}</p>`).join("");
@@ -256,8 +274,11 @@ function pintarResultado(r) {
           <label>Horas totales<input name="horas" inputmode="decimal" required placeholder="p. ej. 100" size="8"></label>
           <label>Siglas<input name="siglas" value="${esc(m.siglas)}" required size="8"></label>
           <label class="ancho">Nombre del módulo en los avisos<input name="nombre" value="${esc(m.nombre)}" required></label>
+          <label>Faltas que cuentan<select name="criterio">${opcionesCriterio(m.criterio || "FI+FJ")}</select></label>
           <button class="boton principal">Guardar y continuar</button>
-        </div></form>`)).join("");
+        </div>
+        <p class="nota">La normativa suma las faltas injustificadas y las justificadas (FI + FJ). Se puede cambiar
+          después en la pestaña Módulos.</p></form>`)).join("");
     partes.push(`<div class="tarjeta faltan">
       <h3>Faltan datos para ${plural(r.faltan_datos.length, "informe", "informes")}</h3>
       <p class="nota">Al guardarlos, el procesado continúa solo.</p>${formularios}</div>`);
@@ -361,6 +382,7 @@ async function cargarAvisos() {
     profesores.map(p => `<option ${p === elegido ? "selected" : ""}>${esc(p)}</option>`).join("");
   pintarAvisos();
   if (estadoAvisos.carpeta === "pendientes") pintarContador(estadoAvisos.lista.length);
+  if ($("#simular-criterio").checked) cargarSimulacion();
 }
 cargadores.avisos = cargarAvisos;
 
@@ -388,7 +410,7 @@ function pintarAvisos() {
         ${carpeta === "realizados" && d.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(d.fecha_entrega))}${porQuien(d.entregado_por)}</span>` : ""}</td>
       <td>${esc(d.grupo)}</td>
       <td class="secundario">${esc(d.modulo)}</td>
-      <td class="num">${esc(d.fi)}</td>
+      <td class="num">${textoFaltas(d.fi, d.fj, d.criterio)}</td>
       <td>${esc(d.fecha)}</td>
       <td class="secundario">${esc(d.profesor)}</td>
       <td class="acciones-fila">
@@ -405,13 +427,14 @@ function pintarAvisos() {
     : { pendientes: "No hay avisos pendientes de entregar. 🎉", realizados: "Todavía no hay avisos entregados.",
         anulados: "No hay avisos anulados." }[carpeta];
   $("#marcar-todos").checked = visibles.length > 0 && visibles.every(d => estadoAvisos.marcados.has(d.ruta));
-  $("#ayuda-avisos").classList.toggle("oculto", carpeta !== "pendientes" || !visibles.length);
+  $("#ayuda-avisos").classList.toggle("oculto", carpeta !== "pendientes" || !visibles.length || $("#simular-criterio").checked);
   actualizarBarraSeleccion();
 }
 
 ["#filtro-profesor", "#filtro-tipo"].forEach(s => $(s).addEventListener("change", () => {
   guardarPreferencia("webpec-profesor", $("#filtro-profesor").value);
   pintarAvisos();
+  if ($("#simular-criterio").checked) pintarSimulacion();
 }));
 $("#filtro-texto").addEventListener("input", pintarAvisos);
 
@@ -594,6 +617,118 @@ async function anular(docs) {
 
 function pintarContador(n) { $("#contador-avisos").textContent = n || ""; }
 
+// ------------------------------------------- simulación con el otro criterio ---
+
+let simulacion = null;  // última simulación pedida al servidor
+
+$("#simular-criterio").addEventListener("change", ev => {
+  const activa = ev.target.checked;
+  $("#panel-simulacion").classList.toggle("oculto", !activa);
+  $("#tarjeta-avisos").classList.toggle("oculto", activa);
+  $(".interruptor").classList.toggle("oculto", activa);
+  $("#ayuda-avisos").classList.toggle("oculto", activa || estadoAvisos.carpeta !== "pendientes");
+  if (activa) { estadoAvisos.marcados.clear(); actualizarBarraSeleccion(); cargarSimulacion(); } else pintarAvisos();
+});
+
+async function cargarSimulacion() {
+  $("#panel-simulacion").innerHTML = '<div class="tarjeta cargando">Calculando con los informes procesados…</div>';
+  try { simulacion = await api("/api/simulacion"); } catch (e) { error(e); simulacion = { modulos: [] }; }
+  // El filtro de profesor también vale para la simulación
+  const filtro = $("#filtro-profesor"), elegido = filtro.value;
+  const profesores = [...new Set([...estadoAvisos.lista.map(d => d.profesor), ...simulacion.modulos.map(m => m.profesor)])].sort();
+  filtro.innerHTML = '<option value="">Todos los profesores</option>' +
+    profesores.map(p => `<option ${p === elegido ? "selected" : ""}>${esc(p)}</option>`).join("");
+  pintarSimulacion();
+}
+
+const ESTADO_SIM = tipo => tipo ? chipTipo(tipo) : "";
+
+function pintarSimulacion() {
+  if (!simulacion) return;
+  const profesor = $("#filtro-profesor").value;
+  const texto = $("#filtro-texto").value.trim().toLowerCase();
+  const modulos = simulacion.modulos.filter(m => (!profesor || m.profesor === profesor) &&
+    (!texto || [m.nombre, m.unidad, m.siglas, ...m.alumnos.map(a => a.alumno)].join(" ").toLowerCase().includes(texto)));
+  const intro = `<p class="nota simulacion-intro">Con el <b>último informe procesado</b> de cada módulo, qué saldría al procesar
+    un informe nuevo con las mismas faltas: con el criterio que tiene ahora y con el otro. <b>No se genera ni se guarda
+    nada.</b> Los avisos ya emitidos no cambian. En azul, el alumnado al que le cambia el resultado.</p>`;
+  if (!modulos.length) {
+    $("#panel-simulacion").innerHTML = intro + `<div class="tarjeta vacio">${simulacion.modulos.length
+      ? "Ningún módulo coincide con los filtros." : "No hay informes procesados: no hay nada que simular."}</div>`;
+    return;
+  }
+  $("#panel-simulacion").innerHTML = intro + modulos.map(m => {
+    const efectos = [];
+    if (m.nuevos_avisos) efectos.push(`<b>${plural(m.nuevos_avisos, "aviso nuevo", "avisos nuevos")} del 7,5 %</b>`);
+    if (m.nuevas_perdidas) efectos.push(`<b>${plural(m.nuevas_perdidas, "pérdida nueva", "pérdidas nuevas")} del 15 %</b>`);
+    if (m.dejan_de_salir) efectos.push(`${plural(m.dejan_de_salir, "aviso que ahora saldría deja", "avisos que ahora saldrían dejan")} de salir`);
+    const resumen = efectos.length ? `Con «${esc(CRITERIO_CORTO[m.criterio_simulado])}»: ${efectos.join(" · ")}.`
+      : `Con «${esc(CRITERIO_CORTO[m.criterio_simulado])}» saldrían los mismos avisos que ahora.`;
+    const filas = m.alumnos.map(a => `<tr class="${a.cambia ? "cambia" : ""}">
+        <td>${esc(a.alumno)}</td><td class="num">${a.fi}</td><td class="num">${a.fj}</td>
+        <td class="num">${esc(a.porcentaje_actual)} %</td>
+        <td>${ESTADO_SIM(a.tipo_actual)} <span class="secundario">${a.tipo_actual ? "" : esc(a.estado_actual)}</span></td>
+        <td class="num">${esc(a.porcentaje_simulado)} %</td>
+        <td>${ESTADO_SIM(a.tipo_simulado)} <span class="secundario">${a.tipo_simulado ? "" : esc(a.estado_simulado)}</span></td></tr>`).join("");
+    return `<div class="tarjeta simulacion-modulo">
+      <div class="cabeza-sim"><div><h3>${esc(m.nombre)} <small>· ${esc(m.unidad)} · ${esc(m.profesor)} · informe del ${esc(m.informe)}</small></h3>
+        <div class="secundario">${esc(m.horas)} h · 7,5 % = ${esc(m.umbral_75)} · 15 % = ${esc(m.umbral_15)} ·
+          ahora cuentan: <b>${esc(m.nombre_actual)}</b></div></div>
+        <button class="boton suave" data-cambiar-criterio='${esc(JSON.stringify({ unidad: m.unidad, siglas: m.siglas, nombre: m.nombre, fila: m.fila, criterio: m.criterio_simulado }))}'>
+          Pasar a «${esc(CRITERIO_CORTO[m.criterio_simulado])}»…</button></div>
+      <p class="resumen-sim">${resumen}</p>
+      ${m.alumnos.length ? `<table class="tabla"><thead><tr><th>Alumno/a</th><th class="num">FI</th><th class="num">FJ</th>
+        <th class="num">% (${esc(CRITERIO_CORTO[m.criterio_actual])})</th><th>Ahora</th>
+        <th class="num">% (${esc(CRITERIO_CORTO[m.criterio_simulado])})</th><th>Con el otro criterio</th></tr></thead>
+        <tbody>${filas}</tbody></table>` : '<p class="nota">Nadie llega al 7,5 % con ninguno de los dos criterios.</p>'}
+    </div>`;
+  }).join("");
+}
+$("#filtro-texto").addEventListener("input", () => { if ($("#simular-criterio").checked) pintarSimulacion(); });
+
+$("#panel-simulacion").addEventListener("click", async ev => {
+  const datos = ev.target.dataset?.cambiarCriterio;
+  if (!datos) return;
+  const m = JSON.parse(datos);
+  if (!await confirmarCriterio(m, m.criterio)) return;
+  try {
+    const modulo = (await api("/api/modulos")).modulos.find(x => x.fila === m.fila);
+    if (!modulo) throw new Error("Ese módulo ya no está en la hoja; recarga la página");
+    await api("/api/modulo/actualizar", { fila: m.fila, horas: modulo.horas, nombre: modulo.nombre,
+      siglas: modulo.siglas, criterio: m.criterio });
+    tostada(`${m.nombre}: ahora cuentan ${CRITERIO_FRASE[m.criterio]}`, "ok");
+    cargarSimulacion();
+  } catch (e) { error(e); }
+});
+
+/**
+ * Antes de cambiar el criterio de faltas de un módulo: cuenta qué saldría con el último informe y pide confirmación.
+ * m: {unidad, siglas, nombre}; nuevo: "FI" o "FI+FJ". Devuelve true si se confirma.
+ */
+async function confirmarCriterio(m, nuevo) {
+  let sim;
+  try {
+    sim = (await api(`/api/simulacion?${new URLSearchParams({ unidad: m.unidad, siglas: m.siglas, criterio: nuevo })}`)).modulos[0];
+  } catch (e) { error(e); return false; }
+  let efecto;
+  if (!sim) {
+    efecto = "<p>Este módulo todavía no tiene informes procesados: el criterio se aplicará desde el primero.</p>";
+  } else {
+    const partes = [];
+    if (sim.nuevos_avisos) partes.push(`<b>${plural(sim.nuevos_avisos, "aviso nuevo", "avisos nuevos")} del 7,5 %</b>`);
+    if (sim.nuevas_perdidas) partes.push(`<b>${plural(sim.nuevas_perdidas, "pérdida nueva", "pérdidas nuevas")} del 15 %</b>`);
+    efecto = `<p>Con el último informe (del ${esc(sim.informe)}) y las mismas faltas, el siguiente informe que se procese generaría
+      ${partes.length ? partes.join(" y ") : "<b>los mismos avisos</b> que con el criterio actual"}.</p>` +
+      (sim.dejan_de_salir ? `<p>${plural(sim.dejan_de_salir, "alumno/a que ahora recibiría un aviso ya no lo recibiría",
+        "alumnos/as que ahora recibirían un aviso ya no lo recibirían")}.</p>` : "");
+  }
+  return await dialogo("Cambiar las faltas que cuentan",
+    `<p><b>${esc(m.nombre)}</b> (${esc(m.unidad)}) pasará a contar <b>${esc(CRITERIO_FRASE[nuevo])}</b>.</p>${efecto}
+     <p class="nota">Los avisos ya emitidos no cambian. El nuevo criterio se aplica desde el siguiente informe que se procese.
+       La pérdida del 15 % sigue exigiendo un aviso del 7,5 % en un informe anterior y más faltas desde entonces.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Cambiar el criterio", clase: "principal", valor: true }]);
+}
+
 async function contarPendientes() {
   try { pintarContador((await api("/api/documentos?carpeta=pendientes")).length); } catch (e) { /* sin contador */ }
 }
@@ -634,11 +769,14 @@ function pintarRegistro() {
         ${f.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(f.fecha_entrega))}${porQuien(f.entregado_por)}</span>` : ""}</td>
       <td>${esc(f.grupo)}</td>
       <td class="secundario">${esc(f.nombre_modulo)}</td><td class="num">${esc(f.faltas_injustificadas)}</td>
+      <td class="num" title="${f.criterio ? `Criterio con el que se generó: ${esc(CRITERIOS[f.criterio] || f.criterio)}` : ""}">${f.faltas_justificadas === ""
+        ? '<span class="secundario" title="Avisos de antes de la 3.40: no se guardaban las FJ">—</span>'
+        : f.criterio === "FI+FJ" ? esc(f.faltas_justificadas) : `<span class="fj-no-cuenta">(${esc(f.faltas_justificadas)})</span>`}</td>
       <td class="num">${esc(f.umbral)}</td><td class="secundario">${esc(f.profesor)}</td>
       <td class="secundario">${esc(fechaHora(f.fecha_proceso))}${f.generado_por ? `<span class="motivo">${porQuien(f.generado_por).trim()}</span>` : ""}</td>
       <td class="acciones-fila">${anulada ? "" : `<button class="enlace peligro" data-anular="${esc(f.documento)}">Anular</button>`}</td></tr>`;
   }).join("")
-    : '<tr><td colspan="10" class="vacio">No hay avisos registrados.</td></tr>';
+    : '<tr><td colspan="11" class="vacio">No hay avisos registrados.</td></tr>';
 }
 $("#filtro-registro").addEventListener("input", pintarRegistro);
 
@@ -656,7 +794,7 @@ async function cargarModulos() {
   try { datos = await api("/api/modulos"); } catch (e) { error(e); return; }
   datos.errores.forEach(e => tostada(e, "error"));
   $("#tabla-modulos tbody").innerHTML = datos.modulos.length ? datos.modulos.map(m => `
-    <tr data-fila="${m.fila}">
+    <tr data-fila="${m.fila}" data-unidad="${esc(m.unidad)}" data-siglas="${esc(m.siglas)}" data-criterio="${esc(m.criterio)}">
       <td><b>${esc(m.unidad)}</b></td>
       <td><input name="siglas" value="${esc(m.siglas)}" size="6" ${m.con_avisos ? 'disabled title="Tiene avisos: no se pueden cambiar"' : ""}></td>
       <td class="secundario">${esc(m.en_informe)}</td>
@@ -664,11 +802,12 @@ async function cargarModulos() {
       <td class="num"><input name="horas" value="${m.horas}" size="5" inputmode="decimal" style="text-align:right"></td>
       <td class="num">${esc(m.umbral_75)}</td>
       <td class="num">${esc(m.umbral_15)}</td>
+      <td><select name="criterio" class="criterio" title="${esc(CRITERIOS[m.criterio])}">${opcionesCriterio(m.criterio, true)}</select></td>
       <td class="acciones-fila">
         <button class="enlace" data-guardar-modulo>Guardar</button>
         <button class="enlace peligro" data-borrar-modulo>Borrar</button>
       </td></tr>`).join("")
-    : '<tr><td colspan="8" class="vacio">Todavía no hay módulos. Se añaden al subir el primer informe de cada uno.</td></tr>';
+    : '<tr><td colspan="9" class="vacio">Todavía no hay módulos. Se añaden al subir el primer informe de cada uno.</td></tr>';
 
   $("#tabla-profesores tbody").innerHTML = datos.profesores.length ? datos.profesores.map(p => `
     <tr data-profesor="${esc(p.profesor)}">
@@ -684,9 +823,12 @@ $("#vista-modulos").addEventListener("click", async ev => {
   const fila = ev.target.closest("tr");
   try {
     if (ev.target.matches("[data-guardar-modulo]")) {
+      const criterio = $("[name=criterio]", fila).value;
+      if (criterio !== fila.dataset.criterio && !await confirmarCriterio(
+        { unidad: fila.dataset.unidad, siglas: fila.dataset.siglas, nombre: $("[name=nombre]", fila).value }, criterio)) return;
       await api("/api/modulo/actualizar", {
         fila: fila.dataset.fila, horas: $("[name=horas]", fila).value,
-        nombre: $("[name=nombre]", fila).value, siglas: $("[name=siglas]", fila).value,
+        nombre: $("[name=nombre]", fila).value, siglas: $("[name=siglas]", fila).value, criterio,
       });
       tostada("Módulo guardado", "ok");
       cargarModulos();
@@ -758,6 +900,89 @@ function pintarCabecera(config, version) {
     document.title = `WebPEC ${version}`;
   }
 }
+
+// ------------------------------------------------------- versión nueva ---
+
+async function comprobarVersion(forzar = false) {
+  let r;
+  try { r = await api(`/api/actualizacion${forzar ? "?forzar=1" : ""}`); } catch (e) { if (forzar) error(e); return null; }
+  $("#estado-version").textContent = !r.activada ? "Desactivado: WebPEC no comprueba si hay versiones nuevas."
+    : r.error ? `${r.error}.` : r.hay_nueva ? `Hay una versión nueva: la ${r.ultima} (tienes la ${r.actual}).`
+    : `Tienes la última versión (${r.actual}).`;
+  if (r.hay_nueva) pintarAvisoVersion(r, forzar);
+  return r;
+}
+
+function pintarAvisoVersion(r, aunqueDescartada) {
+  let descartada = "";
+  try { descartada = sessionStorage.getItem("webpec-version-descartada") || ""; } catch (e) { /* sin almacenamiento */ }
+  if (descartada === r.ultima && !aunqueDescartada) return;
+  const aviso = $("#aviso-version");
+  aviso.innerHTML = `<span>🎉 <b>Hay una versión nueva de WebPEC: la ${esc(r.ultima)}</b> (tienes la ${esc(r.actual)}).
+      <a href="${esc(r.novedades)}" target="_blank" rel="noopener">Ver las novedades</a></span>
+    <div class="acciones"><button class="boton principal" id="boton-actualizar">Actualizar ahora</button>
+      <button class="boton suave" id="boton-mas-tarde">Más tarde</button></div>`;
+  aviso.classList.remove("oculto");
+  $("#boton-mas-tarde").onclick = () => {
+    aviso.classList.add("oculto");
+    try { sessionStorage.setItem("webpec-version-descartada", r.ultima); } catch (e) { /* sin almacenamiento */ }
+  };
+  $("#boton-actualizar").onclick = () => actualizarAhora(r);
+}
+
+/** «Actualizar ahora»: el servidor descarga la versión nueva, se apaga, la instala y vuelve a arrancar. */
+async function actualizarAhora(r) {
+  if (!usuario) await elegirUsuario();
+  if (!usuario) return;
+  const ok = await dialogo(`Actualizar a WebPEC ${r.ultima}`,
+    `<p>WebPEC descargará la versión ${esc(r.ultima)} de GitHub, se cerrará unos segundos, la instalará en su misma carpeta
+       y volverá a abrirse en esta pestaña.</p>
+     <ul class="lista-modal">
+       <li>Los datos (informes, avisos, registro, módulos…) <b>no se tocan</b>. Si la versión nueva necesita ponerlos al día,
+         lo hace al arrancar, con copia de seguridad.</li>
+       <li>Antes se guarda una copia del programa actual en DATOS/COPIAS_SEGURIDAD, por si hubiera que volver atrás.</li>
+       <li>Si hay más pestañas de WebPEC abiertas, se quedarán sin conexión un momento: recárgalas después.</li></ul>
+     <p class="nota"><a href="${esc(r.novedades)}" target="_blank" rel="noopener">Novedades de la ${esc(r.ultima)}</a></p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Actualizar ahora", clase: "principal", valor: true }]);
+  if (!ok) return;
+  const capa = document.createElement("div");
+  capa.className = "actualizando";
+  const mostrar = html => { capa.innerHTML = `<div class="caja tarjeta">${html}</div>`; };
+  mostrar(`<h2>Descargando WebPEC ${esc(r.ultima)}…</h2><p class="nota">Unos segundos, según la conexión.</p>`);
+  document.body.append(capa);
+  try { await api("/api/actualizar", {}); } catch (e) { capa.remove(); error(e); return; }
+  mostrar(`<h2>Instalando WebPEC ${esc(r.ultima)}…</h2>
+    <p>WebPEC se ha cerrado para instalar la versión nueva y volverá a abrirse aquí en unos segundos.</p>
+    <p class="nota">No cierres la ventana del programa (la terminal) mientras tanto.</p>`);
+  const aMano = `<p>Puedes descargarla e instalarla a mano desde <a href="${esc(r.descargas)}" target="_blank" rel="noopener">GitHub</a>.</p>`;
+  const inicio = Date.now();
+  let apagado = false;
+  const esperar = async () => {
+    try {
+      const v = await (await fetch("/api/version", { cache: "no-store" })).json();
+      if (v.version === r.ultima) { location.reload(); return; }
+      if (apagado) {  // ha vuelto a arrancar, pero con la versión de antes
+        mostrar(`<h2>No se ha podido actualizar</h2><p>WebPEC ha vuelto a arrancar con la versión ${esc(v.version)}.
+          En la ventana del programa se explica el motivo.</p>${aMano}
+          <p><button class="boton principal" onclick="location.reload()">Volver a WebPEC</button></p>`);
+        return;
+      }
+    } catch (e) { apagado = true; }
+    if (Date.now() - inicio > 180000) {
+      mostrar(`<h2>WebPEC no ha vuelto a arrancar</h2><p>Ábrelo desde su icono: si la instalación terminó, ya será la
+        versión ${esc(r.ultima)}. En la ventana del programa se explica qué ha pasado.</p>${aMano}`);
+      return;
+    }
+    setTimeout(esperar, 1500);
+  };
+  setTimeout(esperar, 1500);
+}
+
+$("#boton-comprobar-version").addEventListener("click", async () => {
+  const r = await comprobarVersion(true);
+  if (r && !r.error && !r.hay_nueva) tostada(`Tienes la última versión (${r.actual})`, "ok");
+  else if (r?.error) tostada(r.error, "error");
+});
 
 // ------------------------------------------------------------- usuario ---
 
@@ -833,7 +1058,7 @@ const SITUACIONES = {
 
 async function cargarAlumnado() {
   const cuerpo = $("#tabla-alumnado tbody");
-  if (!alumnado.alumnos.length) cuerpo.innerHTML = '<tr><td colspan="11" class="cargando">Leyendo los informes procesados…</td></tr>';
+  if (!alumnado.alumnos.length) cuerpo.innerHTML = '<tr><td colspan="12" class="cargando">Leyendo los informes procesados…</td></tr>';
   try { alumnado = await api("/api/alumnado"); } catch (e) { error(e); }
   for (const [id, campo, todos] of [["#filtro-al-grupo", "grupo", "Todos los grupos"],
     ["#filtro-al-modulo", "modulo", "Todos los módulos"], ["#filtro-al-profesor", "profesor", "Todos los profesores"]]) {
@@ -855,12 +1080,14 @@ function pintarAlumnado() {
   $("#tabla-alumnado tbody").innerHTML = filas.length ? filas.map(a => `<tr>
       <td>${esc(a.alumno)}${a.correo ? `<span class="motivo">${esc(a.correo)}</span>` : ""}</td>
       <td>${esc(a.grupo)}</td><td class="secundario" title="${esc(a.siglas)}">${esc(a.modulo)}</td>
-      <td class="num">${a.fi}</td><td class="num">${esc(a.porcentaje)} %</td>
+      <td class="num">${a.fi}</td>
+      <td class="num">${!a.fj ? "0" : a.criterio === "FI+FJ" ? a.fj : `<span class="fj-no-cuenta" title="En este módulo no cuentan (solo FI)">(${a.fj})</span>`}</td>
+      <td class="num" title="Cuentan: ${esc(CRITERIOS[a.criterio])}">${esc(a.porcentaje)} %</td>
       <td class="num">${esc(a.umbral_75)}</td><td class="num">${esc(a.umbral_15)}</td>
       <td>${SITUACIONES[a.estado](a)}</td><td>${esc(a.informe)}</td><td class="secundario">${esc(a.profesor)}</td>
       <td class="acciones-fila apiladas" data-grupo="${esc(a.grupo)}" data-alumno="${esc(a.en_raices)}" data-siglas="${esc(a.siglas)}">
         <button class="enlace" data-editar>Editar</button><button class="enlace peligro" data-baja>Baja</button></td></tr>`).join("")
-    : `<tr><td colspan="11" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
+    : `<tr><td colspan="12" class="vacio">${alumnado.alumnos.length ? "Nadie coincide con los filtros."
         : "No hay informes procesados. La situación se calcula con los informes que se conservan en «Informes ya procesados»."}</td></tr>`;
   const con = n => alumnado.alumnos.filter(a => a.estado === n).length;
   $("#nota-alumnado").innerHTML = `Según el último informe procesado de cada módulo (${plural(alumnado.informes, "módulo", "módulos")}):
@@ -1130,6 +1357,6 @@ document.addEventListener("keydown", ev => {
 pintarUsuario();
 contarPendientes();
 // Primero el aviso de datos actualizados (si lo hay) y después, si hace falta, quién eres
-cargarConfig().then(() => { if (!usuario) elegirUsuario(); });
+cargarConfig().then(() => { if (!usuario) elegirUsuario(); comprobarVersion(); });
 const vistaInicial = location.hash.slice(1) || leerPreferencia("webpec-vista");
 mostrarVista($(`#vista-${vistaInicial}`) ? vistaInicial : "informes");

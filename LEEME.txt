@@ -5,6 +5,11 @@ Versión: ver el fichero VERSION (historial en CAMBIOS.md)
 Aplicación web local para generar los avisos del 7,5 % y las confirmaciones de pérdida del
 15 % a partir de los "Listados de faltas totales" de Raíces.
 
+USO INTERNO DEL IES ROSA CHACEL: WebPEC está hecha para el profesorado de este instituto, con sus
+modelos de documentos, sus cargos y sus criterios. No está pensada ni preparada para otros centros.
+
+Descargas: https://github.com/jj99211/WebPEC/releases/latest (fichero WebPEC_vX.YY.zip).
+
 
 INSTALACIÓN
 -----------
@@ -21,8 +26,12 @@ INSTALACIÓN
    escritorio (en Linux, también en el menú de aplicaciones) y arranca. Después, la carpeta
    descomprimida ya no hace falta. Se puede repetir sin riesgo (p. ej. si se mueve la carpeta).
 
-ACTUALIZAR A UNA VERSIÓN NUEVA: igual que instalar (descomprimir y doble clic en el instalador,
-opción "Actualizar"). Si los datos vienen de una versión anterior, WebPEC los pone al día solo al
+ACTUALIZAR A UNA VERSIÓN NUEVA: desde la 3.40, al abrir WebPEC avisa si hay una versión nueva;
+"Actualizar ahora" la descarga, la instala en la misma carpeta (sin tocar los datos, con copia
+del programa anterior en DATOS\COPIAS_SEGURIDAD\programa_vX.YY_...) y vuelve a abrirla. Para
+saberlo solo consulta en GitHub cuál es la última versión (no envía ningún dato); se puede
+desactivar en Configuración. También se puede hacer a mano, igual que instalar (descomprimir y
+doble clic en el instalador, opción "Actualizar"). Si los datos vienen de una versión anterior, WebPEC los pone al día solo al
 arrancar, después de guardar una copia de seguridad en DATOS\COPIAS_SEGURIDAD\ (también los de
 la 2.x, que estaban sueltos en la carpeta del programa).
 
@@ -62,10 +71,12 @@ Alumnado      Situación de cada alumno/a en cada módulo según el último info
 Registro      Todos los avisos emitidos, con quién los generó, entregó o anuló, y la actividad
               (quién ha hecho qué). Un aviso nunca se repite, salvo que se anule. También se
               puede anular desde aquí. "Vaciar registro" lo deja en blanco (p. ej. al empezar curso).
-Módulos       Horas, siglas y nombre de cada módulo; nombre de firma de cada profesor.
+Módulos       Horas, siglas, nombre y faltas que cuentan (FI o FI + FJ) de cada módulo;
+              nombre de firma de cada profesor.
               "Borrar todos los módulos y profesores" deja la hoja limpia.
 Configuración Centro, Jefatura de Estudios, Dirección, formato de fecha de los ficheros
-              (AAAAMMDD o DDMMAAAA), conversor a PDF, programa de correo, puerto y acceso desde la red.
+              (AAAAMMDD o DDMMAAAA), conversor a PDF, programa de correo, puerto, acceso desde la
+              red y búsqueda de versiones nuevas.
               Exportar e importar todos los datos en un ZIP.
 Ayuda         Este manual de uso (MANUAL_USUARIO.pdf), en otra pestaña del navegador.
 
@@ -75,10 +86,13 @@ aún no tiene informes procesados elige "Soy nuevo/a" y escribe nombre y apellid
 
 REGLAS
 ------
-- Se cuenta la columna FI (faltas injustificadas) del informe.
-- FI >= 7,5 % de las horas del módulo y sin aviso previo -> AVISO_PEC (aunque ya pase del 15 %).
-- FI >= 15 %, avisado en un informe anterior y con más faltas que cuando se le avisó -> PEC.
-  Si no ha acumulado más faltas desde el aviso, espera al siguiente informe.
+- Faltas que cuentan, según el criterio de cada módulo: FI + FJ (injustificadas y justificadas,
+  como pide la normativa; el que viene marcado en los módulos nuevos) o solo FI (injustificadas;
+  el de los módulos de antes de la 3.40). En Avisos, "Simular con el otro criterio" muestra qué
+  saldría con el otro, sin generar nada; el criterio se cambia en Módulos.
+- Faltas >= 7,5 % de las horas del módulo y sin aviso previo -> AVISO_PEC (aunque ya pase del 15 %).
+- Faltas >= 15 %, avisado en un informe anterior y con más faltas que cuando se le avisó (con el
+  mismo criterio) -> PEC. Si no ha acumulado más faltas desde el aviso, espera al siguiente informe.
 
 
 DATOS (todo dentro de la carpeta DATOS\)
@@ -93,8 +107,9 @@ PEC_MODULOS.xlsx             módulos y profesores (se puede abrir con Excel, pe
                              cerrarlo antes de registrar o cambiar módulos en WebPEC)
 registro_avisos.csv          registro de avisos emitidos (no borrar filas)
 configuracion.ini            configuración (también editable desde la aplicación)
-COPIAS_SEGURIDAD\            copias antes de vaciar el registro o la hoja y antes de
-                             poner al día los datos de una versión anterior
+COPIAS_SEGURIDAD\            copias antes de vaciar el registro o la hoja, antes de
+                             poner al día los datos de una versión anterior y del
+                             programa antes de actualizarlo (programa_vX.YY_...)
 alumnado.csv                 correos y nombres corregidos del alumnado
 bajas_alumnado.csv           alumnado dado de baja (por módulo o en todo el grupo)
 actividad.csv                quién ha hecho cada acción y cuándo

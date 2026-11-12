@@ -8,6 +8,33 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.40 — 2026-11-12
+
+- **Faltas justificadas (FJ).** WebPEC lee ahora también la columna FJ de los informes de Raíces. Cada módulo tiene su
+  **criterio de faltas**: «FI + FJ» (injustificadas y justificadas, como pide la normativa) o «Solo FI»
+  (injustificadas, como hasta ahora). Se elige al dar de alta el módulo («FI + FJ» viene marcado) y se cambia en
+  Módulos (columna «Faltas»); antes de guardar el cambio, WebPEC dice cuántos avisos nuevos saldrían con el último
+  informe. Los módulos que ya existían siguen con «Solo FI» hasta que su profesor/a decida.
+- **Simular con el otro criterio** (pestaña Avisos): para cada módulo, cómo quedarían los porcentajes y qué avisos
+  saldrían con el otro criterio, con el último informe procesado; no genera ni guarda nada. Desde ahí se puede
+  cambiar el criterio del módulo.
+- Avisos, Alumnado, Registro, resumen de procesado, informe para la evaluación (pantalla y Excel) y correos muestran
+  las FJ (entre paréntesis, las que no cuentan en ese módulo) y calculan el % con el criterio del módulo. Cada aviso
+  guarda sus FI, FJ y el criterio con el que se generó. La pérdida del 15 % sigue exigiendo más faltas que en el aviso,
+  contadas con el mismo criterio; en avisos de antes de la 3.40 (sin FJ guardadas) se comparan solo las FI.
+- **Aviso de versión nueva.** Al abrir, WebPEC comprueba en GitHub (<https://github.com/jj99211/WebPEC>) si hay una
+  versión más moderna, sin enviar ningún dato, y lo avisa arriba con un enlace a las novedades. Se puede desactivar o
+  comprobar en el momento en Configuración. Sin Internet, no avisa.
+- **Actualizar ahora**: descarga la versión nueva, la comprueba, se apaga, la instala en la misma carpeta (sin tocar
+  los datos, con copia del programa anterior en `DATOS/COPIAS_SEGURIDAD/programa_vX.YY_…`; se guardan las tres
+  últimas) y vuelve a abrirse en la misma pestaña. Si algo falla, sigue la versión que había. Instalador:
+  `webpec.py --instalar --destino CARPETA` actualiza sin preguntas (lo usa «Actualizar ahora»).
+- El instalador solo reescribe los ficheros que cambian, a través de un temporal, y también guarda copia del
+  programa anterior al actualizar a mano.
+- Aviso de **uso interno del IES Rosa Chacel** en el pie, el manual, `LEEME.txt` y la portada del repositorio.
+- Formato de datos 7 (se migra solo al arrancar, con copia previa): columna «Faltas que cuentan» en
+  `PEC_MODULOS.xlsx` y columnas `faltas_justificadas` y `criterio` en el registro.
+
 ## 3.30 — 2026-10-30
 
 - **Informe para la evaluación** (pestaña Alumnado): listado por grupo (o de todos, uno por página) para la sesión de

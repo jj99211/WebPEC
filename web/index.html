@@ -40,6 +40,8 @@
     </nav>
   </header>
 
+  <div class="aviso-version oculto" id="aviso-version" role="status"></div>
+
   <main>
     <!-- ======================================================= INFORMES -->
     <section class="vista activa" id="vista-informes">
@@ -90,6 +92,8 @@
             <option value="PEC">Pérdida 15 %</option>
           </select>
           <input type="search" id="filtro-texto" placeholder="Buscar alumno, grupo, módulo…">
+          <label class="casilla-simular" title="Ver qué avisos saldrían si cada módulo contara las faltas con el otro criterio (no genera nada)">
+            <input type="checkbox" id="simular-criterio"> Simular con el otro criterio</label>
           <button class="boton peligro-suave" id="boton-borrar-avisos">Borrar avisos…</button>
         </div>
       </div>
@@ -97,12 +101,13 @@
       <p class="nota ayuda" id="ayuda-avisos">Marca las casillas de los avisos para <b>imprimirlos</b>, descargarlos en ZIP
         o <b>marcarlos como entregados</b> (botones en la barra inferior), o usa «Entregado» en cada fila.
         La entrega al alumnado la haces tú, en persona o por correo: WebPEC solo lleva la cuenta.</p>
-      <div class="tarjeta sin-relleno">
+      <div id="panel-simulacion" class="oculto"></div>
+      <div class="tarjeta sin-relleno" id="tarjeta-avisos">
         <table class="tabla" id="tabla-avisos">
           <thead>
             <tr>
               <th class="col-check"><input type="checkbox" id="marcar-todos" aria-label="Marcar todos"></th>
-              <th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num">FI</th>
+              <th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num" title="Faltas injustificadas (FI) y justificadas (FJ) con las que se generó">Faltas</th>
               <th>Informe</th><th>Profesor/a</th><th></th>
             </tr>
           </thead>
@@ -148,7 +153,9 @@
       <div class="tarjeta sin-relleno">
         <table class="tabla" id="tabla-alumnado">
           <thead>
-            <tr><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num">FI</th><th class="num">% horas</th>
+            <tr><th>Alumno/a</th><th>Grupo</th><th>Módulo</th><th class="num" title="Faltas injustificadas">FI</th>
+              <th class="num" title="Faltas justificadas (entre paréntesis si en ese módulo no cuentan)">FJ</th>
+              <th class="num" title="Faltas que cuentan, según el criterio del módulo, en % de sus horas">% horas</th>
               <th class="num">7,5 %</th><th class="num">15 %</th><th>Situación</th><th>Informe</th><th>Profesor/a</th><th></th></tr>
           </thead>
           <tbody></tbody>
@@ -182,7 +189,7 @@
         <table class="tabla" id="tabla-registro">
           <thead>
             <tr><th>Informe</th><th>Tipo</th><th>Alumno/a</th><th>Grupo</th><th>Módulo</th>
-                <th class="num">FI</th><th class="num">Umbral</th><th>Profesor/a</th><th>Generado</th><th></th></tr>
+                <th class="num">FI</th><th class="num">FJ</th><th class="num">Umbral</th><th>Profesor/a</th><th>Generado</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -203,12 +210,15 @@
         <button class="boton peligro-suave" id="boton-vaciar-modulos">Borrar todos los módulos y profesores</button>
       </div>
       <p class="nota">Los umbrales son el 7,5 % y el 15 % de las horas lectivas totales. Los módulos nuevos se
-        registran solos al subir su primer informe. Las siglas de un módulo con avisos no se pueden cambiar.</p>
+        registran solos al subir su primer informe. Las siglas de un módulo con avisos no se pueden cambiar.
+        <b>Faltas que cuentan</b>: la normativa suma las injustificadas y las justificadas (FI + FJ); cada módulo puede
+        contar solo las injustificadas (FI). Antes de cambiarlo, «Simular con el otro criterio» (pestaña Avisos) muestra
+        qué saldría.</p>
       <div class="tarjeta sin-relleno">
         <table class="tabla" id="tabla-modulos">
           <thead>
             <tr><th>Unidad</th><th>Siglas</th><th>Módulo (en el informe)</th><th>Nombre en los avisos</th>
-                <th class="num">Horas</th><th class="num">7,5 %</th><th class="num">15 %</th><th></th></tr>
+                <th class="num">Horas</th><th class="num">7,5 %</th><th class="num">15 %</th><th title="Injustificadas (FI) o injustificadas + justificadas (FI + FJ)">Faltas</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -274,6 +284,14 @@
             </select>
             <small>El puerto y el acceso en red se aplican al volver a arrancar WebPEC.</small>
           </label>
+          <label>Buscar versiones nuevas al abrir
+            <select name="buscar_actualizaciones">
+              <option value="si">Sí (consulta GitHub; no envía ningún dato)</option>
+              <option value="no">No</option>
+            </select>
+            <small id="estado-version"></small>
+          </label>
+          <div class="campo-boton"><button class="boton suave" type="button" id="boton-comprobar-version">Comprobar ahora</button></div>
         </div>
         <p class="nota" id="carpeta-datos"></p>
         <div class="pie-formulario"><button class="boton principal" type="submit">Guardar configuración</button></div>
@@ -294,7 +312,7 @@
   <footer class="pie" id="pie">
     <p>Para consultar dudas, errores o mejoras, enviar un correo a:
       <a href="mailto:jose.jimenezcastillo@educa.madrid.org">jose.jimenezcastillo@educa.madrid.org</a></p>
-    <p>WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid) ·
+    <p>WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid) · Uso interno del IES Rosa Chacel ·
       <a class="licencia" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es" target="_blank" rel="license noopener"
          title="Libre uso, copia y modificación citando al autor, sin fines comerciales y compartiendo igual">
         <span class="cc">CC BY-NC-SA 4.0</span></a></p>

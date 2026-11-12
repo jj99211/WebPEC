@@ -339,3 +339,31 @@ label input, label select { font-weight: 400; color: var(--texto); }
 #plegable-actividad { margin-top: 20px; }
 #plegable-actividad .tabla { margin-top: 12px; }
 a.pestana { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ---------------------------------------------- criterio de faltas (3.40) --- */
+.fj-no-cuenta { color: var(--suave); font-weight: 400; }
+.casilla-simular { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; padding: 0 6px;
+  white-space: nowrap; cursor: pointer; }
+.simulacion-modulo { margin-bottom: 16px; }
+.simulacion-modulo h3 { margin: 0 0 2px; font-size: 16px; }
+.simulacion-modulo h3 small { font-weight: 400; color: var(--suave); }
+.simulacion-modulo .resumen-sim { margin: 6px 0 10px; }
+.simulacion-modulo .resumen-sim b { color: var(--perdida); }
+.simulacion-modulo table { margin-top: 6px; }
+.simulacion-modulo tr.cambia { background: var(--info-fondo); }
+.simulacion-modulo .cabeza-sim { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.simulacion-intro { margin: 0 0 12px; }
+.tabla select.criterio { max-width: 210px; }
+.campo-boton { display: flex; align-items: flex-end; }
+
+/* -------------------------------------------- aviso de versión nueva (3.40) --- */
+.aviso-version { max-width: calc(1200px - 2 * clamp(16px, 4vw, 48px)); margin: 12px auto 0; padding: 10px 16px; border-radius: 12px;
+  background: var(--principal-claro); color: #134e4a; display: flex; gap: 10px 16px; align-items: center;
+  flex-wrap: wrap; box-shadow: var(--sombra); }
+.aviso-version .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.aviso-version a { color: inherit; font-weight: 600; }
+@media (max-width: 1200px) { .aviso-version { margin-left: clamp(16px, 4vw, 48px); margin-right: clamp(16px, 4vw, 48px); } }
+.actualizando { position: fixed; inset: 0; background: rgba(245, 247, 251, .94); display: flex; align-items: center;
+  justify-content: center; z-index: 50; text-align: center; padding: 16px; }
+.actualizando .caja { max-width: 520px; }
+.actualizando h2 { margin: 0 0 8px; }

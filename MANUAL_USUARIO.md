@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.30*
+Manual de la versión 3.40*
 
 ---
 
@@ -15,14 +15,20 @@ Genera dos tipos de documento:
 
 | Documento | Cuándo se genera |
 |---|---|
-| **Aviso (7,5 %)** | El alumno/a tiene faltas injustificadas por encima del 7,5 % de las horas del módulo y todavía no se le había avisado. |
+| **Aviso (7,5 %)** | El alumno/a tiene faltas por encima del 7,5 % de las horas del módulo y todavía no se le había avisado. |
 | **Confirmación de pérdida (15 %)** | El alumno/a supera el 15 %, ya recibió el aviso en un informe anterior y desde entonces ha acumulado más faltas. |
 
 Los documentos salen rellenos con el nombre del alumno/a, el grupo, el módulo, la fecha del informe y las firmas
 del profesor/a y de Jefatura de Estudios. WebPEC **no entrega** nada: la entrega la hace cada profesor/a, en
 persona o por correo, y después la anota en la aplicación.
 
+Qué faltas cuentan lo decide cada módulo: la normativa suma las **injustificadas y las justificadas** (FI + FJ), y
+un módulo puede contar **solo las injustificadas** (FI). Ver «Faltas que cuentan», en el apartado 5.
+
 Todo el departamento usa la misma instalación y ve los avisos de todos.
+
+> **Uso interno del IES Rosa Chacel.** WebPEC está hecha para el profesorado de este instituto, con sus modelos de
+> documentos, sus cargos y sus criterios. No está pensada ni preparada para otros centros.
 
 ## 2. Instalación y puesta en marcha
 
@@ -46,9 +52,24 @@ instituto en el escritorio (en Linux, también en el menú de aplicaciones) y ar
 abierto, pide cerrarlo antes. Después, la carpeta descomprimida ya no hace falta y se puede borrar. Se puede
 repetir sin riesgo, por ejemplo para rehacer el icono si se mueve la carpeta.
 
-Para **actualizar a una versión nueva** se hace lo mismo: descomprimir el ZIP nuevo en cualquier sitio y ejecutar
-su instalador; con Intro elige «Actualizar la instalación que ya hay». Si WebPEC está abierto, el instalador pide
+**Descargar WebPEC:** la última versión está siempre en <https://github.com/jj99211/WebPEC/releases/latest>
+(fichero `WebPEC_vX.YY.zip`, no el «Source code»).
+
+**Actualizar a una versión nueva.** Al abrir WebPEC, si hay una versión más moderna publicada, aparece un aviso
+arriba: **«Hay una versión nueva de WebPEC»**, con un enlace a sus novedades y dos botones:
+
+- **Actualizar ahora:** WebPEC descarga la versión nueva, se cierra unos segundos, la instala en su misma carpeta
+  (el icono no cambia) y vuelve a abrirse en la misma pestaña. Los datos no se tocan; antes se guarda una copia del
+  programa actual en `DATOS/COPIAS_SEGURIDAD/programa_vX.YY_…`, por si hubiera que volver atrás. Mientras tanto no
+  hay que cerrar la ventana de terminal. Si algo falla, sigue funcionando la versión que había y WebPEC lo explica.
+- **Más tarde:** el aviso desaparece hasta la próxima vez que se abra WebPEC.
+
+También se puede actualizar a mano, como se instala: descomprimir el ZIP nuevo en cualquier sitio y ejecutar su
+instalador; con Intro elige «Actualizar la instalación que ya hay». Si WebPEC está abierto, el instalador pide
 cerrarlo (botón de apagado) antes de copiar nada.
+
+Para saber si hay versión nueva, WebPEC solo consulta en GitHub cuál es la última publicada: **no envía ningún
+dato**. Sin Internet, simplemente no avisa. Se puede desactivar en Configuración.
 
 **Arrancar** (cada día): doble clic en el icono «WebPEC» del escritorio (o en `WebPEC.bat` / `WebPEC.sh`).
 
@@ -81,7 +102,8 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
 3. Revisar la lista de *Informes pendientes de procesar*: muestra el nombre que recibirá cada informe
    (`FECHA_GRUPO_MÓDULO_Faltas.pdf`).
 4. Pulsar **Procesar informes**. Si es la primera vez que aparece un módulo o un profesor/a, WebPEC pide los datos
-   que le faltan (horas totales y siglas del módulo, nombre del profesor/a tal y como debe ir en la firma) y
+   que le faltan (horas totales, siglas y **faltas que cuentan** del módulo, nombre del profesor/a tal y como debe
+   ir en la firma) y
    después continúa sola. Si el nombre del profesor/a del informe se parece al de alguien que ya está en la lista
    (por ejemplo, dado de alta sin su segundo nombre), WebPEC pregunta si es la misma persona: al confirmarlo, se
    guarda con el nombre que trae Raíces y conserva su firma.
@@ -98,7 +120,8 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
 - **Informes pendientes de procesar:** lo que se ha subido y todavía no se ha procesado. Nada se renombra ni se
   genera hasta pulsar el botón. **Actualizar** vuelve a leer la lista.
 - **Procesar informes:** renombra los informes, pide los datos que falten y genera los avisos. Al terminar
-  muestra un resumen con los avisos creados.
+  muestra un resumen con los avisos creados y las faltas de cada alumno/a (FI y FJ; entre paréntesis, las FJ
+  que en ese módulo no cuentan).
 - **Informes ya procesados** (desplegable): histórico de informes.
 - **Borrar todos los informes procesados:** borra los PDF de Raíces ya procesados (no afecta a los avisos ni al
   registro).
@@ -108,6 +131,8 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
 - **Pendientes de entregar / Entregados / Anulados:** cambia entre las tres bandejas. En Entregados y Anulados
   se ve cuándo y quién lo hizo.
 - **Filtros:** por profesor/a, por tipo (7,5 % o 15 %) y búsqueda por alumno, grupo o módulo.
+- **Faltas:** las faltas injustificadas (FI) y justificadas (FJ) con las que se generó cada aviso.
+- **Simular con el otro criterio:** ver «Faltas que cuentan», en el apartado 5.
 - **Casillas de selección:** al marcar uno o varios avisos aparece una barra inferior con:
   - **Imprimir:** une los avisos marcados en un solo PDF y abre la impresión.
   - **Descargar ZIP:** descarga los documentos marcados.
@@ -141,8 +166,9 @@ dos a la vez.
 
 ### Alumnado
 
-La situación de cada alumno/a en cada módulo, según el **último informe procesado** de ese módulo: faltas (FI),
-porcentaje de horas, umbrales y situación:
+La situación de cada alumno/a en cada módulo, según el **último informe procesado** de ese módulo: faltas
+injustificadas (FI) y justificadas (FJ; entre paréntesis si en ese módulo no cuentan), porcentaje de horas (con las
+faltas que cuentan en el módulo), umbrales y situación:
 
 - **Sin avisos**: no llega al 7,5 %.
 - **Supera el 7,5 % sin aviso**: le corresponde un aviso que no tiene vigente (por ejemplo, porque se anuló); el
@@ -171,9 +197,10 @@ En cada fila:
 
 **Informe para la evaluación…** prepara el listado para llevar a la **sesión de evaluación**: se elige un grupo (o
 todos, uno por página) y sale una tabla con cada alumno/a en filas y cada módulo en columnas. En cada casilla, las
-faltas injustificadas, el porcentaje de horas y la situación (aviso del 7,5 % o pérdida del 15 % con su fecha, «≥ 7,5 %
+faltas injustificadas y justificadas, el porcentaje de horas y la situación (aviso del 7,5 % o pérdida del 15 % con su fecha, «≥ 7,5 %
 sin aviso» o baja en ese módulo), coloreada para verla de un vistazo; al final de cada fila, cuántos avisos y pérdidas
-tiene. Encima, el resumen del grupo, y debajo, los módulos (profesor/a, horas, umbrales y fecha del último informe) y
+tiene. Encima, el resumen del grupo, y debajo, los módulos (profesor/a, horas, umbrales, fecha del último informe y
+faltas que cuentan) y
 el alumnado dado de baja. Dos formatos:
 
 - **Ver e imprimir**: se abre en otra pestaña del navegador, lista para **imprimir o guardar en PDF** (en horizontal).
@@ -186,7 +213,8 @@ motivo); **Recuperar** deshace una baja dada por error.
 
 ### Registro
 
-Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI), umbral, profesor/a,
+Lista de todos los avisos emitidos: informe, tipo, alumno/a, grupo, módulo, faltas (FI y FJ; en los avisos de
+antes de la 3.40 no se guardaban las FJ), umbral, profesor/a,
 fecha de generación y quién lo generó (y, si se entregó o anuló, cuándo y quién). Tiene un buscador.
 Gracias al registro **un aviso nunca se repite**, salvo que se anule. Los avisos anulados aparecen tachados, con
 la fecha y el motivo. El enlace **Anular** de cada fila sirve también para avisos cuyo documento ya no existe.
@@ -198,9 +226,10 @@ seguridad.
 
 ### Módulos
 
-- **Módulos:** unidad, siglas, nombre del módulo en el informe y en los avisos, horas totales y los umbrales del
-  7,5 % y del 15 %. Los módulos nuevos se registran solos al subir su primer informe. Las siglas de un módulo con
-  avisos no se pueden cambiar.
+- **Módulos:** unidad, siglas, nombre del módulo en el informe y en los avisos, horas totales, los umbrales del
+  7,5 % y del 15 % y las **faltas que cuentan** («Solo FI» o «FI + FJ»). Los módulos nuevos se registran solos al
+  subir su primer informe. Las siglas de un módulo con avisos no se pueden cambiar. Al cambiar las faltas que
+  cuentan y pulsar **Guardar**, WebPEC dice antes cuántos avisos nuevos saldrían con el último informe.
 - **Profesorado:** nombre tal y como viene en el informe (Raíces lo escribe sin tildes) y nombre correcto para la
   firma. **Añadir profesor/a…** da de alta a alguien que aún no tiene informes (con su nombre y apellidos como en
   Raíces); **Borrar** quita a alguien de la lista (sus avisos no se tocan).
@@ -212,7 +241,8 @@ seguridad.
 - **Documentos:** formato de la fecha en los nombres de fichero (AAAAMMDD, que ordena por fecha, o DDMMAAAA) y
   programa para pasar a PDF (automático, LibreOffice, Word o ninguno) y programa para **enviar por correo**
   (automático, Thunderbird o fichero .eml).
-- **Aplicación:** puerto y acceso desde otros ordenadores de la red del centro (se aplican al volver a arrancar).
+- **Aplicación:** puerto y acceso desde otros ordenadores de la red del centro (se aplican al volver a arrancar) y
+  **buscar versiones nuevas al abrir** (sí o no). **Comprobar ahora** mira en ese momento si hay versión nueva.
 - **Guardar configuración** para aplicar los cambios.
 - **Copia de los datos:**
   - **Exportar datos (ZIP):** descarga todos los datos (registro, módulos, profesorado, informes, avisos, correos y
@@ -226,13 +256,43 @@ Cierra WebPEC de forma ordenada.
 
 ## 5. Reglas que aplica WebPEC
 
-- Se cuenta la columna **FI** (faltas injustificadas) del informe.
+- Se cuentan las faltas del informe de Raíces según el criterio del módulo: **FI + FJ** (injustificadas más
+  justificadas, como pide la normativa) o **solo FI** (injustificadas).
 - Los umbrales son el 7,5 % y el 15 % de las horas lectivas totales del módulo.
-- **FI ≥ 7,5 %** y sin aviso previo → **Aviso**, aunque ya supere el 15 %.
-- **FI ≥ 15 %**, con aviso en un informe anterior y con más faltas que entonces → **Confirmación de pérdida**.
-  Si no ha acumulado más faltas desde el aviso, se espera al siguiente informe.
+- **Faltas ≥ 7,5 %** y sin aviso previo → **Aviso**, aunque ya supere el 15 %.
+- **Faltas ≥ 15 %**, con aviso en un informe anterior y con más faltas que entonces (contadas con el mismo
+  criterio) → **Confirmación de pérdida**. Si no ha acumulado más faltas desde el aviso, se espera al siguiente
+  informe.
 - Ningún documento se genera dos veces para el mismo alumno, grupo, módulo y tipo.
 - El alumnado dado de baja en un módulo (pestaña Alumnado) no recibe avisos nuevos en ese módulo.
+
+### Faltas que cuentan
+
+La normativa dice que, para la pérdida de la evaluación continua, cuentan **todas las faltas**: las injustificadas
+(FI) y las justificadas (FJ). Algunos profesores prefieren ser más flexibles y contar solo las injustificadas. Por
+eso cada módulo tiene su criterio:
+
+- **FI + FJ** (el de la normativa): es el que viene marcado al dar de alta un módulo nuevo.
+- **Solo FI**: el que usaban todos los módulos hasta la versión 3.40. Los módulos que ya existían conservan este
+  criterio al actualizar, para que nada cambie hasta que su profesor/a lo decida.
+
+**Simular antes de decidir.** En la pestaña **Avisos**, la casilla **Simular con el otro criterio** muestra, para cada
+módulo, cómo quedarían los porcentajes con el otro criterio y qué avisos saldrían, con el último informe procesado y
+como si llegara un informe nuevo con las mismas faltas. **No genera ni guarda nada.** El alumnado al que le cambia el
+resultado sale resaltado en azul. Desde ahí mismo, **Pasar a «…»** cambia el criterio de ese módulo (también se puede
+hacer en la pestaña Módulos).
+
+**Qué pasa al cambiar el criterio:**
+
+- Los avisos ya emitidos **no cambian**; cada uno guarda las FI y FJ y el criterio con el que se hizo.
+- El criterio nuevo se aplica desde el **siguiente informe que se procese**; antes de cambiarlo, WebPEC dice cuántos
+  avisos nuevos saldrían.
+- Al pasar a FI + FJ pueden salir avisos nuevos del 7,5 %: alumnado que, según la normativa, ya supera el límite.
+- La pérdida del 15 % **sigue exigiendo** un aviso del 7,5 % en un informe anterior y más faltas desde entonces:
+  nadie pierde la evaluación continua solo por cambiar el criterio. Si el aviso es de antes de la 3.40 (cuando no se
+  guardaban las FJ), se comparan solo las faltas injustificadas.
+- Al pasar a «solo FI», un alumno/a avisado puede quedar por debajo del 15 %: su aviso sigue siendo válido, pero la
+  pérdida solo saldrá si supera el 15 % con el criterio nuevo.
 
 ## 6. Dónde se guardan los datos
 
@@ -246,10 +306,10 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | `AVISOS_PENDIENTES/<profesor>/` | Avisos generados y sin entregar |
 | `AVISOS_REALIZADOS/<profesor>/` | Avisos entregados |
 | `AVISOS_ANULADOS/<profesor>/` | Avisos anulados |
-| `PEC_MODULOS.xlsx` | Módulos y profesorado (si se abre con Excel, cerrarlo antes de usar WebPEC) |
+| `PEC_MODULOS.xlsx` | Módulos (con las faltas que cuentan en cada uno) y profesorado (si se abre con Excel, cerrarlo antes de usar WebPEC) |
 | `registro_avisos.csv` | Registro de avisos emitidos (no borrar filas a mano) |
 | `configuracion.ini` | Configuración |
-| `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos y antes de poner al día los datos de una versión anterior |
+| `COPIAS_SEGURIDAD/` | Copias automáticas antes de vaciar el registro o la hoja de módulos, antes de poner al día los datos de una versión anterior y del programa antes de actualizarlo (`programa_vX.YY_…`, las tres últimas) |
 | `alumnado.csv` | Correos del alumnado y nombres corregidos a mano |
 | `bajas_alumnado.csv` | Alumnado dado de baja (por módulo o en todos los de su grupo) |
 | `actividad.csv` | Quién ha hecho cada acción y cuándo |
@@ -273,6 +333,9 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | Al arrancar dice que no puede actualizar los datos | Hay un fichero de datos abierto (Excel, LibreOffice): cerrarlo y volver a arrancar. |
 | Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. |
 | «Enviar por correo» no abre Thunderbird, o el correo sale sin adjunto | En Configuración, elegir «Fichero .eml» para enviar por correo. |
+| «Actualizar ahora» dice que no puede descargar | Sin Internet o con un proxy que lo impide: descargar el ZIP a mano desde GitHub y ejecutar su instalador. |
+| Tras actualizar hay que volver a la versión anterior | La copia del programa anterior está en `DATOS/COPIAS_SEGURIDAD/programa_vX.YY_…`: copiar su contenido sobre la carpeta de WebPEC (con WebPEC cerrado). Si la versión nueva puso al día los datos, sus datos anteriores están en el ZIP `…_antes_de_migrar_datos_…` de la misma carpeta. |
+| Un módulo cuenta faltas que no quiero (o no cuenta las justificadas) | Pestaña Módulos, columna «Faltas»: «Solo FI» o «FI + FJ». Antes, «Simular con el otro criterio» en Avisos. |
 
 ## 8. Contacto
 
