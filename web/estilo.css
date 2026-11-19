@@ -367,3 +367,35 @@ a.pestana { text-decoration: none; display: inline-flex; align-items: center; }
   justify-content: center; z-index: 50; text-align: center; padding: 16px; }
 .actualizando .caja { max-width: 520px; }
 .actualizando h2 { margin: 0 0 8px; }
+
+/* ------------------------------------------------------------ v3.50 --- */
+/* Avisos: tabla compacta, sin desplazamiento horizontal; acciones con iconos (texto en title/aria-label) */
+#tabla-avisos { table-layout: fixed; }
+#tabla-avisos th, #tabla-avisos td { padding-left: 7px; padding-right: 7px; }
+#tabla-avisos th:nth-child(1) { width: 34px; }
+#tabla-avisos th:nth-child(2) { width: 98px; }
+#tabla-avisos th:nth-child(4) { width: 70px; }
+#tabla-avisos th:nth-child(5) { width: 60px; }
+#tabla-avisos th:nth-child(6) { width: 104px; }
+#tabla-avisos th:nth-child(7) { width: 88px; }
+#tabla-avisos th:nth-child(8) { width: 14%; }
+#tabla-avisos th:nth-child(9) { width: 136px; }
+/* En pantallas estrechas se quita la columna del profesor/a (está en el filtro) para que quepa el nombre */
+@media (max-width: 1000px) { #tabla-avisos th:nth-child(8), #tabla-avisos td:nth-child(8) { display: none; } }
+#tabla-avisos .recorte { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tabla-avisos .col-alumno .recorte:first-child { display: inline-block; max-width: 100%; vertical-align: bottom; }
+#tabla-avisos .col-alumno .motivo { white-space: normal; }
+#tabla-avisos .col-alumno .motivo.recorte { white-space: nowrap; }
+#tabla-avisos .col-faltas { font-size: 13px; }
+#tabla-avisos .chip { padding: 2px 8px; }
+.icono-accion { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: none; color: var(--principal); cursor: pointer; vertical-align: middle; }
+.icono-accion:hover, .icono-accion:focus-visible { background: rgba(15, 118, 110, .1); }
+.icono-accion svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.simulacion-modulo .botones-sim { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 760px) { #tabla-avisos th:nth-child(7), #tabla-avisos td:nth-child(7) { display: none; } }
+#tabla-avisos .acciones-fila { font-size: 0; }  /* sin huecos entre iconos: el ancho de la columna es exacto */
+#tabla-avisos .icono-accion + .icono-accion { margin-left: 1px; }
+.lista-reprocesar { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; max-height: 45vh; overflow-y: auto; }
+.lista-reprocesar .motivo { color: #b45309; }

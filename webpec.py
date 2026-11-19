@@ -69,6 +69,8 @@ TAMANO_MAXIMO = 200 * 1024 * 1024
 FICHEROS_SUBIDOS = {"/api/subir", "/api/correos/importar", "/api/datos/importar"}
 MANUAL = BASE / "MANUAL_USUARIO.md"
 MANUAL_PDF = BASE / "MANUAL_USUARIO.pdf"
+INSTRUCCIONES = BASE / "INSTRUCCIONES.html"
+INSTRUCCIONES_PDF = BASE / "INSTRUCCIONES.pdf"
 
 # Las operaciones sobre ficheros, hoja y registro se hacen de una en una
 CERROJO = threading.Lock()
@@ -138,6 +140,13 @@ class Manejador(BaseHTTPRequestHandler):
             return self._estatico(unquote(ruta[5:]))
         if ruta == "/ayuda":
             return self._enviar(200, manual_html().encode("utf-8"), "text/html; charset=utf-8")
+        if ruta == "/instrucciones":
+            return self._enviar(200, instrucciones_html().encode("utf-8"), "text/html; charset=utf-8")
+        if ruta == "/instrucciones.pdf":
+            if not INSTRUCCIONES_PDF.is_file():
+                raise ErrorPEC("No están las instrucciones en PDF: usa la versión en pantalla (/instrucciones)")
+            return self._fichero(INSTRUCCIONES_PDF.read_bytes(), f"Instrucciones_WebPEC_{VERSION}.pdf",
+                                 "application/pdf", "descargar" in q)
         if ruta == "/manual.pdf":
             if not MANUAL_PDF.is_file():
                 raise ErrorPEC("No está el manual en PDF: usa la versión en pantalla (y su botón Imprimir)")
@@ -262,6 +271,12 @@ class Manejador(BaseHTTPRequestHandler):
             r = m.procesar()
             return r, "Procesar informes" if r["informes"] else None, \
                 f"{len(r['informes'])} informes: {r['avisos']} avisos y {r['perdidas']} pérdidas"
+        if ruta == "/api/informe/reprocesar":
+            if d.get("simular"):
+                return m.reprocesar(d.get("id", ""), simular=True), None, ""
+            r = m.reprocesar(d.get("id", ""), d.get("alumnos"))
+            return r, "Reprocesar informe", \
+                f"{d.get('id', '').split('/')[-1]}: {r['avisos']} avisos y {r['perdidas']} pérdidas"
         if ruta == "/api/informe/borrar":
             m.borrar_informe(d.get("id", ""))
             return {"ok": True}, "Quitar informe pendiente", d.get("id", "")
@@ -550,6 +565,7 @@ def manual_html(para_pdf=False):
     botones = "" if para_pdf else (
         '<div class="botones"><button onclick="window.print()">Imprimir o guardar en PDF</button>'
         + ('<a href="/manual.pdf?descargar=1">Descargar el manual en PDF</a>' if MANUAL_PDF.is_file() else "")
+        + '<a href="/instrucciones" target="_blank">Instrucciones rápidas (una página)</a>'
         + "</div>")
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -581,6 +597,20 @@ def manual_html(para_pdf=False):
 {botones}
 {markdown_html(md)}
 </main></body></html>"""
+
+
+def instrucciones_html(para_pdf=False):
+    """Hoja de instrucciones rápidas (INSTRUCCIONES.html con la versión y el escudo puestos)."""
+    try:
+        html = INSTRUCCIONES.read_text(encoding="utf-8")
+    except OSError:
+        return "<!doctype html><meta charset=utf-8><p>No se encuentra INSTRUCCIONES.html en la carpeta de WebPEC.</p>"
+    botones = "" if para_pdf else (
+        '<div class="botones"><button onclick="window.print()">Imprimir</button>'
+        + ('<a href="/instrucciones.pdf?descargar=1">Descargar en PDF</a>' if INSTRUCCIONES_PDF.is_file() else "")
+        + '<a href="/ayuda">Manual completo</a></div>')
+    return (html.replace("{{VERSION}}", escape(VERSION)).replace("{{ESCUDO}}", escudo_en_linea())
+            .replace("<!--BOTONES-->", botones))
 
 
 def ya_en_marcha(puerto):
@@ -835,7 +865,7 @@ def configuracion_previa(datos, programa=BASE):
 # ----------------------------------------------------------- instalador ---
 
 # Ficheros de versiones anteriores que ya no forman parte del programa (al actualizar se quitan)
-OBSOLETOS = ["Crear_acceso_directo.bat", "Crear_acceso_directo.sh"]
+OBSOLETOS = ["Crear_acceso_directo.bat", "Crear_acceso_directo.sh", "LEEME.txt"]
 # Lo que hay en la carpeta y no es programa: no se copia al instalar en otra carpeta
 NO_PROGRAMA = {motor_pec.DATOS, "__pycache__", *motor_pec.DATOS_2X}
 

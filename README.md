@@ -20,9 +20,9 @@ La última versión está siempre en **[Releases → Latest](../../releases/late
 3. Doble clic en `Instalar_WebPEC.bat` (Windows) o `Instalar_WebPEC.sh` (Linux) y seguir las preguntas.
    Si ya hay un WebPEC instalado, elegir «Actualizar»: los datos se conservan.
 
-Para pasar los avisos a PDF hace falta LibreOffice o Microsoft Word. Las instrucciones completas están en
-[`LEEME.txt`](LEEME.txt) y en el [manual de usuario](MANUAL_USUARIO.md); los cambios de cada versión, en
-[`CAMBIOS.md`](CAMBIOS.md).
+Para pasar los avisos a PDF hace falta LibreOffice o Microsoft Word. Lo imprescindible, en una página, está en las
+[instrucciones rápidas](INSTRUCCIONES.pdf); todo lo demás, en el [manual de usuario](MANUAL_USUARIO.md) (también
+dentro del programa, en la pestaña Ayuda). Los cambios de cada versión, en [`CAMBIOS.md`](CAMBIOS.md).
 
 ## Privacidad
 

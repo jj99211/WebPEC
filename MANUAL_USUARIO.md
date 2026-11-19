@@ -1,7 +1,7 @@
 # WebPEC — Manual de usuario
 
 *Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel (Madrid) ·
-Manual de la versión 3.40*
+Manual de la versión 3.50*
 
 ---
 
@@ -93,6 +93,11 @@ haciendo clic en él se cambia.
 **Ayuda:** la pestaña **Ayuda** abre este manual en otra pestaña del navegador, con un botón para imprimirlo o
 guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_USUARIO.pdf`).
 
+**Instrucciones rápidas:** una hoja de una página con lo imprescindible (instalar, uso diario, faltas que cuentan,
+qué hacer si algo sale mal). Se abre con el enlace **Instrucciones rápidas** de la parte de arriba de este manual,
+se puede descargar en PDF y también va en la carpeta de WebPEC (`INSTRUCCIONES.pdf`). Es la que conviene pasar a
+quien empieza a usar WebPEC.
+
 ## 3. Uso habitual paso a paso
 
 1. **Descargar de Raíces** el «Listado de faltas totales» de cada grupo y módulo, en PDF. El nombre del fichero
@@ -122,9 +127,36 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
 - **Procesar informes:** renombra los informes, pide los datos que falten y genera los avisos. Al terminar
   muestra un resumen con los avisos creados y las faltas de cada alumno/a (FI y FJ; entre paréntesis, las FJ
   que en ese módulo no cuentan).
-- **Informes ya procesados** (desplegable): histórico de informes.
+- **Informes ya procesados** (desplegable): histórico de informes. El último de cada módulo tiene el botón
+  **Reprocesar** (ver más abajo).
 - **Borrar todos los informes procesados:** borra los PDF de Raíces ya procesados (no afecta a los avisos ni al
   registro).
+
+**Reprocesar un informe.** Vuelve a pasar el **último informe procesado** de un módulo con los datos de ahora
+(avisos anulados, faltas que cuentan en el módulo, alumnado de baja…) y genera **al momento** los avisos que falten,
+sin esperar a un informe nuevo de Raíces. Sirve, por ejemplo, después de anular un aviso por un error de datos o
+después de cambiar el criterio de faltas del módulo. Los avisos ya emitidos no se repiten, y los nuevos llevan la
+**fecha del informe**. Solo se puede reprocesar el último informe de cada módulo: los de Raíces son acumulados (desde
+el 1 de septiembre), así que el último ya incluye todas las faltas. Como la pérdida del 15 % exige el aviso en un
+informe *anterior*, si se anularon a la vez el aviso y la pérdida, al reprocesar solo vuelve a salir el aviso del
+7,5 %; la pérdida saldrá con el siguiente informe si el alumno/a acumula más faltas.
+
+Antes de generar nada, WebPEC muestra **la lista de lo que falta por generar**, con una casilla por alumno/a, y solo
+genera los marcados. Si alguno ya se había generado y **se anuló** (por ejemplo, a propósito, para darle margen),
+aparece **sin marcar**, con la fecha y el motivo de la anulación: hay que marcarlo para volver a generarlo. Los que
+no se marcan saldrán con el siguiente informe si siguen cumpliendo las condiciones (como cualquier aviso anulado).
+
+**Dos informes del mismo día.** Si se descarga de Raíces otro informe del mismo grupo y módulo el mismo día (por
+ejemplo, uno por la mañana y otro por la tarde), los dos recibirían el mismo nombre. WebPEC los compara:
+
+- si el nuevo tiene **más faltas**, aparece como **«Más reciente del mismo día»**: al procesarlo genera solo los
+  avisos nuevos (quien ya tenía aviso no lo vuelve a recibir) y **sustituye** al informe de ese día ya procesado, que
+  se borra;
+- si es **igual** al ya procesado, o **más antiguo** (con menos faltas), aparece como **«Ya procesado»** y no se
+  procesa: se puede quitar de la lista.
+
+Quien recibió el aviso del 7,5 % con el informe de la mañana no recibe la pérdida del 15 % con el de la tarde:
+la pérdida exige que el aviso sea de un informe de un día anterior.
 
 ### Avisos
 
@@ -139,8 +171,10 @@ guardarlo en PDF. El manual también va en PDF en la carpeta de WebPEC (`MANUAL_
   - **Marcar como entregados** (en la bandeja de entregados, **Volver a pendientes**).
   - **Enviar por correo:** prepara un correo por aviso (ver más abajo).
   - **Anular…:** para avisos emitidos por error (ver más abajo).
-- **Correo** (en cada fila): prepara el correo de ese aviso.
-- **Entregado** (en cada fila): pasa ese aviso a la bandeja de entregados.
+- **Iconos de cada fila** (al pasar el ratón se ve qué hace cada uno): **ver** el documento, **descargarlo**,
+  preparar el **correo** de ese aviso y **✓ entregado** (lo pasa a la bandeja de entregados). Si la ventana es
+  estrecha, se ocultan las columnas del profesor/a y de la fecha; el nombre completo del alumno/a se ve al pasar el
+  ratón.
 - Al pasar avisos a Entregados, WebPEC pide marcar «Confirmo que se han entregado».
 - **Borrar avisos…:** borra de una vez los documentos pendientes, los entregados o todos. Está pensado para
   limpiar al terminar el curso: el Registro los conserva y no se vuelven a generar.
@@ -159,7 +193,8 @@ justificaron…), se marca y se pulsa **Anular…**. WebPEC pide el **motivo** (
 - el aviso queda **tachado en el Registro**, con la fecha y el motivo;
 - su documento pasa a la bandeja **Anulados** (se puede seguir viendo y descargando);
 - como ya no cuenta, si el alumno/a sigue por encima del límite, **el siguiente informe que se procese lo vuelve a
-  generar** con los datos correctos.
+  generar** con los datos correctos. Para generarlo ya, sin esperar a otro informe: corregir el dato (por ejemplo,
+  las horas del módulo) y pulsar **Reprocesar** en Informes → Informes ya procesados.
 
 Una pérdida del 15 % se apoya en su aviso del 7,5 %: para anular el aviso hay que anular antes la pérdida, o las
 dos a la vez.
@@ -280,13 +315,16 @@ eso cada módulo tiene su criterio:
 módulo, cómo quedarían los porcentajes con el otro criterio y qué avisos saldrían, con el último informe procesado y
 como si llegara un informe nuevo con las mismas faltas. **No genera ni guarda nada.** El alumnado al que le cambia el
 resultado sale resaltado en azul. Desde ahí mismo, **Pasar a «…»** cambia el criterio de ese módulo (también se puede
-hacer en la pestaña Módulos).
+hacer en la pestaña Módulos); al confirmarlo, **Cambiar y reprocesar ya** genera en ese momento los avisos que
+salen con el criterio nuevo. Si con el criterio actual falta por generar algún aviso con el último informe, la
+tarjeta del módulo lo dice y muestra el botón **Reprocesar**. Las pérdidas del 15 % de quien recibió el aviso en ese
+mismo último informe aparecen como «con el siguiente informe»: no salen al reprocesar.
 
 **Qué pasa al cambiar el criterio:**
 
 - Los avisos ya emitidos **no cambian**; cada uno guarda las FI y FJ y el criterio con el que se hizo.
-- El criterio nuevo se aplica desde el **siguiente informe que se procese**; antes de cambiarlo, WebPEC dice cuántos
-  avisos nuevos saldrían.
+- El criterio nuevo se aplica desde el **siguiente informe que se procese**, o en ese momento si se **reprocesa** el
+  último informe del módulo; antes de cambiarlo, WebPEC dice cuántos avisos nuevos saldrían.
 - Al pasar a FI + FJ pueden salir avisos nuevos del 7,5 %: alumnado que, según la normativa, ya supera el límite.
 - La pérdida del 15 % **sigue exigiendo** un aviso del 7,5 % en un informe anterior y más faltas desde entonces:
   nadie pierde la evaluación continua solo por cambiar el criterio. Si el aviso es de antes de la 3.40 (cuando no se
@@ -317,6 +355,11 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 
 **Copia de seguridad:** «Exportar datos» (en Configuración) o copiar la carpeta `DATOS` entera.
 
+Fuera de `DATOS` solo está el programa: `plantillas/` (las plantillas .docx de los dos documentos), `web/`, `lib/`
+(librerías incluidas), los lanzadores e instaladores, `VERSION` y `CAMBIOS.md` (versión instalada e historial de
+cambios), este manual (`MANUAL_USUARIO.md` y `.pdf`) y las instrucciones rápidas (`INSTRUCCIONES.html` y `.pdf`).
+Al actualizar se sustituyen todos esos ficheros; los de `DATOS` no se tocan.
+
 ## 7. Problemas frecuentes
 
 | Problema | Solución |
@@ -331,11 +374,12 @@ Los datos están en la carpeta `DATOS`, dentro de `WebPEC` (fuera de ella solo e
 | «Indica quién eres antes de hacer cambios» | Elegir el propio nombre haciendo clic bajo el título de WebPEC. |
 | No aparezco en la lista de «¿Quién eres?» | Elegir «Soy nuevo/a» y escribir nombre y apellidos como en Raíces. |
 | Al arrancar dice que no puede actualizar los datos | Hay un fichero de datos abierto (Excel, LibreOffice): cerrarlo y volver a arrancar. |
-| Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. |
+| Un aviso se emitió por error | Anularlo (pestaña Avisos o Registro), indicando el motivo. Para que salga ya el correcto, corregir el dato y **Reprocesar** el último informe (Informes → Informes ya procesados). |
+| Un informe sale como «Ya procesado» y es otro del mismo día | Si tiene más faltas sale como «Más reciente del mismo día» y se procesa; si sale «Ya procesado», es igual o más antiguo que el que ya se procesó. |
 | «Enviar por correo» no abre Thunderbird, o el correo sale sin adjunto | En Configuración, elegir «Fichero .eml» para enviar por correo. |
 | «Actualizar ahora» dice que no puede descargar | Sin Internet o con un proxy que lo impide: descargar el ZIP a mano desde GitHub y ejecutar su instalador. |
 | Tras actualizar hay que volver a la versión anterior | La copia del programa anterior está en `DATOS/COPIAS_SEGURIDAD/programa_vX.YY_…`: copiar su contenido sobre la carpeta de WebPEC (con WebPEC cerrado). Si la versión nueva puso al día los datos, sus datos anteriores están en el ZIP `…_antes_de_migrar_datos_…` de la misma carpeta. |
-| Un módulo cuenta faltas que no quiero (o no cuenta las justificadas) | Pestaña Módulos, columna «Faltas»: «Solo FI» o «FI + FJ». Antes, «Simular con el otro criterio» en Avisos. |
+| Un módulo cuenta faltas que no quiero (o no cuenta las justificadas) | Pestaña Módulos, columna «Faltas»: «Solo FI» o «FI + FJ». Antes, «Simular con el otro criterio» en Avisos; desde ahí, «Cambiar y reprocesar ya» genera al momento los avisos nuevos. |
 
 ## 8. Contacto
 

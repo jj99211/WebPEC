@@ -1,0 +1,108 @@
+<!doctype html>
+<!-- Instrucciones rápidas de WebPEC (una página). WebPEC sustituye {{VERSION}} y {{ESCUDO}} al mostrarla
+     (/instrucciones) y generar_manual_pdf.sh la convierte en INSTRUCCIONES.pdf. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebPEC {{VERSION}} · Instrucciones</title>
+<style>
+  :root { --principal: #0f766e; --texto: #1e293b; --suave: #64748b; --linea: #cbd5e1; --rojo: #be123c; --indigo: #4f46e5; }
+  @page { size: A4; margin: 11mm 14mm 9mm; }
+  body { margin: 0; background: #f5f7fb; color: var(--texto); font: 13px/1.45 "Noto Sans", system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 800px; margin: 0 auto; padding: 24px 16px; background: #fff; }
+  header { display: flex; align-items: center; gap: 14px; padding-bottom: 8px; border-bottom: 3px solid var(--principal); }
+  header img { height: 58px; }
+  h1 { margin: 0; font-size: 25px; color: var(--principal); line-height: 1.15; }
+  h1 .pec { color: var(--indigo); }
+  .sub { color: var(--suave); font-size: 13px; }
+  .intro { margin: 10px 0 4px; }
+  .uso-interno { display: inline-block; background: #ccfbf1; color: #115e59; font-weight: 700; font-size: 12px;
+    padding: 1px 10px; border-radius: 6px; }
+  h2 { margin: 10px 0 4px; padding: 3px 10px; font-size: 15px; color: #fff; background: var(--principal); border-radius: 5px; }
+  ul, ol { margin: 0; padding-left: 24px; }
+  li { margin: 1px 0; }
+  ol li::marker { color: var(--principal); font-weight: 700; }
+  p { margin: 4px 0; }
+  a { color: var(--principal); font-weight: 700; text-decoration: none; }
+  code { background: #eef2f7; padding: 0 5px; border-radius: 4px; font-size: 12.3px; }
+  .ojo { color: var(--rojo); font-weight: 700; }
+  footer { margin-top: 12px; padding-top: 6px; border-top: 1px solid var(--linea); text-align: center; color: var(--suave); font-size: 11.5px; }
+  .botones { margin: 0 auto 12px; max-width: 800px; padding: 0 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .botones button, .botones a { font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--linea);
+    background: #fff; color: var(--principal); cursor: pointer; }
+  @media print { body { background: #fff; } main { padding: 0; max-width: none; } .botones { display: none; } }
+</style>
+</head>
+<body>
+<!--BOTONES-->
+<main>
+<header>
+  <img src="{{ESCUDO}}" alt="">
+  <div>
+    <h1>Web<span class="pec">PEC</span> {{VERSION}} · Instrucciones</h1>
+    <div class="sub">Avisos de pérdida de evaluación continua · Departamento de Informática · IES Rosa Chacel</div>
+  </div>
+</header>
+
+<p class="intro">WebPEC genera los <b>avisos del 7,5 %</b> y las <b>confirmaciones de pérdida del 15 %</b> a partir de los
+  listados de faltas de Raíces. <span class="uso-interno">Herramienta de uso interno del IES Rosa Chacel</span></p>
+
+<h2>1. Qué necesitas</h2>
+<ul>
+  <li><b>Python 3.9 o posterior</b>: <a href="https://www.python.org">www.python.org</a>. En Windows, al instalarlo, marca
+    <b>«Add Python to PATH»</b>.</li>
+  <li><b>LibreOffice</b> o <b>Microsoft Word</b>, para que los avisos salgan en PDF.</li>
+</ul>
+
+<h2>2. Descargar e instalar</h2>
+<ol>
+  <li>Entra en <a href="https://github.com/jj99211/WebPEC/releases/latest">github.com/jj99211/WebPEC/releases/latest</a>
+    y descarga <code>WebPEC_v{{VERSION}}.zip</code> (no el «Source code»).</li>
+  <li><b>Descomprímelo</b>, por ejemplo en Descargas. En Windows: botón derecho → <b>«Extraer todo»</b>.</li>
+  <li>Doble clic en el instalador: <code>Instalar_WebPEC.bat</code> (Windows) o <code>Instalar_WebPEC.sh</code> (Linux).
+    Cuando pregunte, pulsa <b>Intro</b>.</li>
+  <li>Se crea el icono <b>«WebPEC»</b> en el escritorio y se abre la aplicación en el navegador. La carpeta descomprimida
+    ya se puede borrar.</li>
+</ol>
+
+<h2>3. Uso diario</h2>
+<ol>
+  <li>Abre WebPEC con el icono del escritorio. <span class="ojo">No cierres la ventana negra (terminal)</span> mientras lo uses.</li>
+  <li>En <b>«¿Quién eres?»</b> elige tu nombre. Si no estás en la lista, pulsa «Soy nuevo/a» y escribe tu nombre y
+    apellidos como en Raíces.</li>
+  <li>Descarga de Raíces el <b>«Listado de faltas totales»</b> en PDF y <b>arrástralo</b> a la pestaña <b>Informes</b>.</li>
+  <li>Pulsa <b>Procesar informes</b>. La primera vez que aparece un módulo, te pedirá sus horas totales, sus siglas y qué
+    faltas cuentan.</li>
+  <li>En la pestaña <b>Avisos</b>, marca los avisos e <b>imprímelos</b> o <b>envíalos por correo</b>. Cuando estén
+    entregados, pásalos a <b>Entregados</b>.</li>
+  <li>Para terminar, pulsa el <b>botón de apagado</b> (arriba a la derecha).</li>
+</ol>
+
+<h2>4. Qué faltas cuentan</h2>
+<ul>
+  <li>La normativa suma las faltas <b>injustificadas y las justificadas</b> («FI + FJ»). Es la opción marcada al dar de
+    alta un módulo. Si prefieres contar <b>solo las injustificadas</b> («Solo FI»), cámbialo en <b>Módulos</b>.</li>
+  <li>Antes de decidir, en <b>Avisos</b> marca <b>«Simular con el otro criterio»</b>: verás qué avisos saldrían, sin
+    generar nada. Desde ahí puedes cambiar el criterio y <b>reprocesar</b> para generar ya los avisos nuevos.</li>
+</ul>
+
+<h2>5. Si algo sale mal</h2>
+<ul>
+  <li>Un aviso con datos erróneos: <b>Anúlalo</b> (con el motivo), corrige el dato y pulsa <b>Reprocesar</b> en
+    Informes → Informes ya procesados.</li>
+  <li>¿Has descargado otro informe el mismo día con más faltas? Súbelo y procésalo: solo salen los avisos nuevos.</li>
+</ul>
+
+<h2>6. Actualizaciones y ayuda</h2>
+<ul>
+  <li>Cuando haya una versión nueva, WebPEC lo avisará al abrirse. Pulsa <b>«Actualizar ahora»</b>: se instala sola y
+    <b>tus datos no se tocan</b>.</li>
+  <li>La pestaña <b>Ayuda</b> abre el manual completo. Dudas o errores:
+    <a href="mailto:jose.jimenezcastillo@educa.madrid.org">jose.jimenezcastillo@educa.madrid.org</a></li>
+</ul>
+
+<footer>WebPEC © 2026 Departamento de Informática del IES Rosa Chacel (Madrid) · CC BY-NC-SA 4.0</footer>
+</main>
+</body>
+</html>

@@ -145,6 +145,8 @@ buscar_actualizaciones = {buscar_actualizaciones}
 """
 
 AVISO, PEC = "AVISO_PEC", "PEC"
+# Un informe frente al ya procesado del mismo grupo, módulo y día (ver Motor._frente_al_procesado)
+IGUAL, ANTERIOR, POSTERIOR = "igual", "anterior", "posterior"
 
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -1266,11 +1268,36 @@ class Motor:
             if modulo is None or hoja.firma(informe["profesor"]) is None:
                 continue
             destino = self.base / PROCESAR / self._nombre_informe(config, informe, modulo)
-            if (self.base / PROCESADOS / destino.name).exists() or destino == ruta:
+            if destino == ruta or self._frente_al_procesado(informe, destino.name) in (IGUAL, ANTERIOR):
                 continue
             if destino.exists():
                 destino.unlink()
             shutil.move(str(ruta), str(destino))
+
+    def _frente_al_procesado(self, informe, nombre):
+        """
+        Compara un informe con el ya procesado que se llama igual (mismo grupo, módulo y día; p. ej. uno
+        descargado por la mañana y otro por la tarde). None: no hay ninguno; IGUAL: mismas faltas; ANTERIOR:
+        tiene menos faltas (es más antiguo); POSTERIOR: es más reciente y lo sustituye al procesarse.
+        Los de Raíces son acumulados: el más reciente tiene más faltas en total o, con las mismas, menos
+        injustificadas (porque se justificaron).
+        """
+        ruta = self.base / PROCESADOS / nombre
+        if not ruta.is_file():
+            return None
+        previo = self._informe_procesado(ruta)
+        if previo is None:
+            return POSTERIOR
+
+        def faltas(inf):
+            return {a["alumno"]: (a["fi"], a["fj"]) for a in inf["alumnos"]}
+        nuevas, viejas = faltas(informe), faltas(previo)
+        if nuevas == viejas:
+            return IGUAL
+
+        def orden(f):
+            return sum(fi + fj for fi, fj in f.values()), -sum(fi for fi, _ in f.values())
+        return ANTERIOR if orden(nuevas) < orden(viejas) else POSTERIOR
 
     @staticmethod
     def _nombre_informe(config, informe, modulo):
@@ -1320,8 +1347,13 @@ class Motor:
             "criterio": modulo["criterio"],
         }
         item["nombre_final"] = self._nombre_informe(config, informe, modulo)
-        if carpeta == NUEVOS and (self.base / PROCESADOS / item["nombre_final"]).exists():
-            item["duplicado"] = f"Ya se procesó un informe {item['nombre_final']}"
+        frente = self._frente_al_procesado(informe, item["nombre_final"])
+        if frente == IGUAL:
+            item["duplicado"] = f"Ya se procesó este mismo informe ({item['nombre_final']})"
+        elif frente == ANTERIOR:
+            item["duplicado"] = f"Ya se procesó un informe más reciente de ese día ({item['nombre_final']}, con más faltas)"
+        elif frente == POSTERIOR:
+            item["sustituye"] = item["nombre_final"]
         return item, informe
 
     def _pendientes(self, hoja, config):
@@ -1371,35 +1403,102 @@ class Motor:
                 continue
         leidos.sort(key=lambda r: (r[1]["fecha"], r[1]["unidad"], r[1]["modulo"]))
 
-        resumen = {"informes": [], "avisos": 0, "perdidas": 0, "mensajes": []}
+        resumen = self._resumen_vacio()
         fichas, bajas = self._fichas(), self._claves_bajas()
         for ruta, informe in leidos:
             modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
             firma = hoja.firma(informe["profesor"])
             if modulo is None or firma is None:
                 continue
-            situacion = [a for a in evaluar(informe, modulo, registro)
-                         if not de_baja(bajas, informe["unidad"], a["alumno"], modulo["siglas"])]
-            nuevos = [a for a in situacion if a["tipo"]]
-            documentos = []
-            if nuevos:
-                filas, aviso = self._generar(config, informe, modulo, firma, nuevos, fichas)
-                registro.extend(filas)
-                documentos = [f["documento"] for f in filas]
-                resumen["avisos"] += sum(f["tipo"] == AVISO for f in filas)
-                resumen["perdidas"] += sum(f["tipo"] == PEC for f in filas)
-                if aviso and aviso not in resumen["mensajes"]:
-                    resumen["mensajes"].append(aviso)
+            if self._frente_al_procesado(informe, ruta.name) in (IGUAL, ANTERIOR):
+                continue  # se queda en la lista de pendientes como «ya procesado»
+            self._procesar_informe(config, informe, modulo, firma, registro, fichas, bajas, resumen, ruta.name)
+            # Un informe más reciente del mismo día sustituye al anterior, que se borra
+            (self.base / PROCESADOS / ruta.name).unlink(missing_ok=True)
             shutil.move(str(ruta), str(self.base / PROCESADOS / ruta.name))
-            resumen["informes"].append({
-                "archivo": ruta.name, "modulo": modulo["nombre"], "unidad": informe["unidad"],
-                "fecha": informe["fecha"].strftime("%d/%m/%Y"), "profesor": firma,
-                "situacion": situacion, "documentos": documentos,
-            })
 
         quedan = self._pendientes(hoja, config)
         resumen["faltan_datos"] = [i for i in quedan if i.get("falta_firma") or i.get("falta_modulo")]
         resumen["sin_procesar"] = [i for i in quedan if i.get("error") or i.get("duplicado")]
+        return resumen
+
+    @staticmethod
+    def _resumen_vacio():
+        return {"informes": [], "avisos": 0, "perdidas": 0, "mensajes": [], "faltan_datos": [], "sin_procesar": []}
+
+    def _procesar_informe(self, config, informe, modulo, firma, registro, fichas, bajas, resumen, archivo, solo=None):
+        """
+        Genera los avisos que falten de un informe y lo anota en el resumen (no mueve el fichero).
+        solo: si se indica, solo se generan los de esos alumnos (nombre de Raíces); los demás esperan.
+        """
+        situacion = [a for a in evaluar(informe, modulo, registro)
+                     if not de_baja(bajas, informe["unidad"], a["alumno"], modulo["siglas"])]
+        if solo is not None:
+            for a in situacion:
+                if a["tipo"] and a["alumno"] not in solo:
+                    a["tipo"], a["estado"] = None, "No generado: desmarcado al reprocesar"
+        nuevos = [a for a in situacion if a["tipo"]]
+        documentos = []
+        if nuevos:
+            filas, aviso = self._generar(config, informe, modulo, firma, nuevos, fichas)
+            registro.extend(filas)
+            documentos = [f["documento"] for f in filas]
+            resumen["avisos"] += sum(f["tipo"] == AVISO for f in filas)
+            resumen["perdidas"] += sum(f["tipo"] == PEC for f in filas)
+            if aviso and aviso not in resumen["mensajes"]:
+                resumen["mensajes"].append(aviso)
+        resumen["informes"].append({
+            "archivo": archivo, "modulo": modulo["nombre"], "unidad": informe["unidad"],
+            "fecha": informe["fecha"].strftime("%d/%m/%Y"), "profesor": firma,
+            "situacion": situacion, "documentos": documentos,
+        })
+
+    def reprocesar(self, ident, alumnos=None, simular=False):
+        """
+        Botón «Reprocesar»: vuelve a pasar el último informe procesado de un módulo con los datos de ahora
+        (avisos anulados, criterio de faltas cambiado, bajas…) y genera al momento lo que falte, con la fecha
+        del informe. Lo ya emitido no se repite. Solo el último de cada módulo: los informes de Raíces son
+        acumulados, así que el último ya incluye las faltas de los anteriores.
+        simular: no genera nada; devuelve {informe, modulo, unidad, fecha, candidatos: [{alumno, en_raices, tipo,
+        fi, fj, criterio, anulado: {fecha, motivo, por} o None}]} para elegir en el diálogo.
+        alumnos: nombres de Raíces de los que se quieren generar (None: todos los que falten).
+        """
+        ruta = self._ruta_informe(ident)
+        if ruta.parent.name != PROCESADOS:
+            raise ErrorPEC("Solo se pueden reprocesar informes ya procesados")
+        if ruta.name not in {archivo for _, archivo in self._ultimos_informes().values()}:
+            raise ErrorPEC(f"{ruta.name} no es el último informe procesado de su módulo: solo se puede reprocesar "
+                           f"el último (es acumulado: ya incluye las faltas de los anteriores)")
+        informe = self._informe_procesado(ruta)
+        hoja, config = self.hoja(), self.config()
+        modulo = hoja.buscar_modulo(informe["unidad"], informe["modulo"])
+        firma = hoja.firma(informe["profesor"])
+        if modulo is None:
+            raise ErrorPEC(f"El módulo {informe['modulo']} ({informe['unidad']}) ya no está en la pestaña Módulos")
+        if firma is None:
+            raise ErrorPEC(f"{informe['profesor']} ya no está en la lista de profesores (pestaña Módulos)")
+        registro, fichas, bajas = leer_registro(self.base / REGISTRO), self._fichas(), self._claves_bajas()
+        if simular:
+            grupo, siglas = informe["unidad"], modulo["siglas"]
+            candidatos = []
+            for a in evaluar(informe, modulo, registro):
+                if not a["tipo"] or de_baja(bajas, grupo, a["alumno"], siglas):
+                    continue
+                # ¿Se anuló antes uno igual? (p. ej. a propósito, para dar margen): se avisa en el diálogo
+                anulados = [f for f in registro if anulada(f) and misma_clave(f, grupo, siglas, a["alumno"])
+                            and f["tipo"] == a["tipo"]]
+                ultimo = max(anulados, key=lambda f: f.get("fecha_anulacion", ""), default=None)
+                candidatos.append({
+                    "alumno": ficha_de(fichas, grupo, a["alumno"])["nombre"], "en_raices": a["alumno"],
+                    "tipo": a["tipo"], "fi": a["fi"], "fj": a["fj"], "criterio": a["criterio"],
+                    "anulado": {"fecha": ultimo.get("fecha_anulacion", ""), "motivo": ultimo.get("motivo_anulacion", ""),
+                                "por": ultimo.get("anulado_por", "")} if ultimo else None,
+                })
+            return {"informe": ruta.name, "modulo": modulo["nombre"], "unidad": grupo,
+                    "fecha": informe["fecha"].strftime("%d/%m/%Y"), "candidatos": candidatos}
+        resumen = dict(self._resumen_vacio(), reprocesado=True)
+        self._procesar_informe(config, informe, modulo, firma, registro, fichas, bajas, resumen, ruta.name,
+                               solo=None if alumnos is None else set(alumnos))
         return resumen
 
     def _generar(self, config, informe, modulo, firma, nuevos, fichas):
@@ -1438,7 +1537,9 @@ class Motor:
         return filas, aviso
 
     def procesados(self):
-        return [{"id": f"{PROCESADOS}/{p.name}", "archivo": p.name,
+        """Informes procesados; «ultimo»: es el último de su módulo (el único que se puede reprocesar)."""
+        ultimos = {archivo for _, archivo in self._ultimos_informes().values()}
+        return [{"id": f"{PROCESADOS}/{p.name}", "archivo": p.name, "ultimo": p.name in ultimos,
                  "fecha": datetime.fromtimestamp(p.stat().st_mtime).strftime("%d/%m/%Y %H:%M")}
                 for p in sorted(self._pdfs(PROCESADOS), key=lambda p: p.name, reverse=True)]
 
@@ -1608,6 +1709,7 @@ class Motor:
                 "profesor": firmas.get(ruta.parent.name, ruta.parent.name.replace("_", " ")),
                 "tipo": tipo, "alumno": ficha.get("nombre", ""),
                 "grupo": fila.get("grupo", ""), "modulo": fila.get("nombre_modulo", ""),
+                "siglas": fila.get("modulo", ""),
                 "fi": fila.get("faltas_injustificadas", ""),
                 "fj": fila.get("faltas_justificadas", ""),
                 "criterio": fila.get("criterio", ""),
@@ -1848,10 +1950,16 @@ class Motor:
             simulado = criterio if criterio in CRITERIOS else otro_criterio(actual)
             grupo = informe["unidad"]
 
-            def situacion(con):
-                return {a["alumno"]: a for a in evaluar(informe, modulo, registro, con, posterior=True)
+            def situacion(con, posterior=True):
+                return {a["alumno"]: a for a in evaluar(informe, modulo, registro, con, posterior=posterior)
                         if not de_baja(bajas, grupo, a["alumno"], modulo["siglas"])}
             con_actual, con_simulado = situacion(actual), situacion(simulado)
+            # Al reprocesar el último informe no cuenta como «posterior»: la pérdida del 15 % de quien se avisó
+            # en ese mismo informe espera al siguiente
+            ya_actual, ya_simulado = situacion(actual, False), situacion(simulado, False)
+
+            def espera(con, ya, alumno):
+                return bool(con.get(alumno, {}).get("tipo")) and not ya.get(alumno, {}).get("tipo")
             alumnos = []
             for a in informe["alumnos"]:
                 if a["alumno"] not in con_actual and a["alumno"] not in con_simulado:
@@ -1865,6 +1973,8 @@ class Motor:
                     "tipo_simulado": y["tipo"] if y else None,
                     "estado_simulado": y["estado"] if y else "No llega al 7,5 %",
                     "cambia": (x or {}).get("tipo") != (y or {}).get("tipo"),
+                    "siguiente_actual": espera(con_actual, ya_actual, a["alumno"]),
+                    "siguiente_simulado": espera(con_simulado, ya_simulado, a["alumno"]),
                 })
             alumnos.sort(key=lambda a: normalizar(a["alumno"]))
             nuevos = [a for a in alumnos if a["tipo_simulado"] and a["tipo_simulado"] != a["tipo_actual"]]
@@ -1879,6 +1989,17 @@ class Motor:
                 "nuevos_avisos": sum(a["tipo_simulado"] == AVISO for a in nuevos),
                 "nuevas_perdidas": sum(a["tipo_simulado"] == PEC for a in nuevos),
                 "dejan_de_salir": sum(1 for a in alumnos if a["tipo_actual"] and not a["tipo_simulado"]),
+                # «Reprocesar» con el criterio actual: lo que saldría ya
+                "id_informe": f"{PROCESADOS}/{archivo}",
+                "reprocesar_avisos": sum(a["tipo"] == AVISO for a in ya_actual.values()),
+                "reprocesar_perdidas": sum(a["tipo"] == PEC for a in ya_actual.values()),
+                # De ellos, los que ya se generaron y se anularon (quizá a propósito)
+                "reprocesar_anulados": sum(1 for a in ya_actual.values() if a["tipo"] and any(
+                    anulada(f) and f["tipo"] == a["tipo"] and misma_clave(f, grupo, modulo["siglas"], a["alumno"])
+                    for f in registro)),
+                # Lo mismo tras pasar al otro criterio (para el diálogo de cambio)
+                "reprocesar_avisos_simulado": sum(a["tipo"] == AVISO for a in ya_simulado.values()),
+                "reprocesar_perdidas_simulado": sum(a["tipo"] == PEC for a in ya_simulado.values()),
             })
         resultado.sort(key=lambda m: (m["profesor"], m["unidad"], m["siglas"]))
         return {"modulos": resultado}

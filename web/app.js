@@ -181,7 +181,14 @@ function pintarPendientes(estado) {
     } else {
       meta = `<b>${esc(inf.unidad)}</b> · ${esc(inf.datos_modulo ? inf.datos_modulo.nombre : inf.modulo)} · ` +
         `informe del ${esc(inf.fecha)} · ${esc(inf.firma || inf.profesor)}`;
-      if (inf.duplicado) chips += '<span class="chip gris">Ya procesado</span>';
+      if (inf.duplicado) {
+        chips += '<span class="chip gris">Ya procesado</span>';
+        meta += `<br>${esc(inf.duplicado)}`;
+      }
+      if (inf.sustituye) {
+        chips += '<span class="chip info" title="Al procesarlo, sustituye al informe de ese día ya procesado (que se borra)">Más reciente del mismo día</span>';
+        meta += "<br>Trae más faltas que el ya procesado de ese día: al procesarlo solo saldrán los avisos nuevos y sustituirá al anterior.";
+      }
       if (inf.falta_modulo) chips += '<span class="chip aviso">Módulo nuevo</span>';
       if (inf.falta_firma) chips += '<span class="chip aviso">Profesor/a nuevo</span>';
       if (!chips) chips = '<span class="chip ok">Listo</span>';
@@ -235,7 +242,7 @@ function pintarResultado(r) {
         : '<p class="sin-avisos">Ningún alumno llega al 7,5 %.</p>'}`).join("");
     const mensajes = r.mensajes.map(m => `<p class="nota">⚠ ${esc(m)}</p>`).join("");
     partes.push(`<div class="tarjeta resultado">
-      <h3>${plural(r.informes.length, "informe procesado", "informes procesados")}:
+      <h3>${r.reprocesado ? "Informe reprocesado" : plural(r.informes.length, "informe procesado", "informes procesados")}:
         ${plural(r.avisos, "aviso", "avisos")} y ${plural(r.perdidas, "pérdida", "pérdidas")}</h3>
       ${mensajes}${informes}
       ${r.avisos + r.perdidas ? '<p style="margin-top:16px"><button class="boton principal" data-ir-avisos>Ver los avisos para imprimir</button></p>' : ""}
@@ -352,9 +359,55 @@ async function cargarProcesados() {
   try {
     const lista = await api("/api/procesados");
     $("#lista-procesados").innerHTML = lista.length
-      ? `<ul class="lista-simple">${lista.map(p => `<li><a href="/informe?id=${encodeURIComponent(p.id)}" target="_blank">${esc(p.archivo)}</a> <small>${esc(p.fecha)}</small></li>`).join("")}</ul>`
+      ? `<p class="nota" style="margin-top:12px">«Reprocesar» vuelve a pasar el último informe de un módulo con los datos de
+          ahora (avisos anulados, faltas que cuentan…) y genera al momento los avisos que falten.</p>
+        <ul class="lista-simple">${lista.map(p => `<li><a href="/informe?id=${encodeURIComponent(p.id)}" target="_blank">${esc(p.archivo)}</a>
+          <small>${esc(p.fecha)}</small>${p.ultimo ? ` <button class="enlace" data-reprocesar="${esc(p.id)}">Reprocesar</button>` : ""}</li>`).join("")}</ul>`
       : '<p class="nota" style="margin-top:12px">No hay informes procesados.</p>';
   } catch (e) { error(e); }
+}
+
+$("#lista-procesados").addEventListener("click", async ev => {
+  const id = ev.target.dataset?.reprocesar;
+  if (!id) return;
+  const r = await reprocesar(id);
+  if (r) { estadoInformes.resultado = r; pintarResultado(r); }
+});
+
+/**
+ * «Reprocesar»: vuelve a pasar el último informe procesado de un módulo y genera los avisos que falten.
+ * extra: texto del diálogo con lo que saldrá (si se sabe). Devuelve el resumen, o null si se cancela o falla.
+ */
+async function reprocesar(id, extra = "") {
+  let previa;
+  try { previa = await api("/api/informe/reprocesar", { id, simular: true }); } catch (e) { error(e); return null; }
+  if (!previa.candidatos.length) {
+    tostada(`${previa.modulo} (${previa.unidad}): con el informe del ${previa.fecha} no falta ningún aviso por generar`, "ok");
+    return null;
+  }
+  // Lo que se anuló antes (quizá a propósito, para dar margen) sale sin marcar: hay que decidirlo
+  const lista = previa.candidatos.map(c => `<li><label class="casilla-modulo">
+      <input type="checkbox" name="reprocesar" value="${esc(c.en_raices)}" ${c.anulado ? "" : "checked"}>
+      <span>${chipTipo(c.tipo)} <b>${esc(c.alumno)}</b> · ${textoFaltas(c.fi, c.fj, c.criterio)}
+      ${c.anulado ? `<span class="motivo">⚠ Se anuló uno igual el ${esc(fechaHora(c.anulado.fecha))}${porQuien(c.anulado.por)}:
+        «${esc(c.anulado.motivo)}». Márcalo solo si quieres volver a generarlo.</span>` : ""}</span></label></li>`).join("");
+  const ok = await dialogo("Reprocesar informe",
+    `<p>Con <b>${esc(previa.informe)}</b> (${esc(previa.modulo)}, ${esc(previa.unidad)}, informe del ${esc(previa.fecha)}) y los
+       datos de ahora, faltan por generar:</p>${extra}<ul class="lista-reprocesar">${lista}</ul>
+     <p class="nota">Se generan los marcados, con la fecha del informe; los demás saldrán con el siguiente informe si
+       siguen cumpliendo las condiciones. Los avisos ya emitidos no se repiten.</p>`,
+    [{ texto: "Cancelar", valor: false }, { texto: "Generar los marcados", clase: "principal", valor: true }]);
+  if (!ok) return null;
+  const alumnos = [...$("#modal-texto").querySelectorAll("input[name=reprocesar]:checked")].map(c => c.value);
+  if (!alumnos.length) { tostada("No has marcado ninguno: no se ha generado nada"); return null; }
+  try {
+    const r = await api("/api/informe/reprocesar", { id, alumnos });
+    tostada(r.avisos + r.perdidas
+      ? `Reprocesado: ${plural(r.avisos, "aviso", "avisos")} y ${plural(r.perdidas, "pérdida", "pérdidas")}`
+      : "Reprocesado: no falta ningún aviso", "ok");
+    contarPendientes();
+    return r;
+  } catch (e) { error(e); return null; }
 }
 
 // --------------------------------------------------------------- avisos ---
@@ -392,7 +445,22 @@ function avisosVisibles() {
   const texto = $("#filtro-texto").value.trim().toLowerCase();
   return estadoAvisos.lista.filter(d =>
     (!profesor || d.profesor === profesor) && (!tipo || d.tipo === tipo) &&
-    (!texto || [d.alumno, d.grupo, d.modulo, d.archivo].join(" ").toLowerCase().includes(texto)));
+    (!texto || [d.alumno, d.grupo, d.modulo, d.siglas, d.archivo].join(" ").toLowerCase().includes(texto)));
+}
+
+/** Iconos de las acciones de cada aviso (el texto va en title y aria-label). */
+const ICONOS = {
+  ver: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  descargar: '<path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/>',
+  correo: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  entregado: '<path d="m4 12.5 5 5L20 6.5"/>',
+};
+const icono = nombre => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre]}</svg>`;
+/** Botón o enlace de icono: etiqueta en title (al pasar el ratón) y en aria-label (lectores de pantalla). */
+function accionIcono(nombre, etiqueta, atributos, enlace = false) {
+  return enlace
+    ? `<a class="icono-accion" ${atributos} title="${esc(etiqueta)}" aria-label="${esc(etiqueta)}">${icono(nombre)}</a>`
+    : `<button class="icono-accion" ${atributos} title="${esc(etiqueta)}" aria-label="${esc(etiqueta)}">${icono(nombre)}</button>`;
 }
 
 function pintarAvisos() {
@@ -404,20 +472,20 @@ function pintarAvisos() {
     return `<tr class="${estadoAvisos.marcados.has(d.ruta) ? "marcada" : ""}">
       <td class="col-check"><input type="checkbox" data-ruta="${esc(d.ruta)}" ${estadoAvisos.marcados.has(d.ruta) ? "checked" : ""}></td>
       <td>${chipTipo(d.tipo)}</td>
-      <td>${esc(d.alumno || d.archivo)}${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}
-        ${d.correo && carpeta !== "anulados" ? `<span class="motivo">${esc(d.correo)}</span>` : ""}
+      <td class="col-alumno"><span class="recorte" title="${esc(d.alumno || d.archivo)}">${esc(d.alumno || d.archivo)}</span>${d.pdf ? "" : ' <span class="chip gris">.docx</span>'}
+        ${d.correo && carpeta !== "anulados" ? `<span class="motivo recorte" title="${esc(d.correo)}">${esc(d.correo)}</span>` : ""}
         ${carpeta === "anulados" ? `<span class="motivo">Anulado el ${esc(fechaHora(d.fecha_anulacion))}${porQuien(d.anulado_por)}: ${esc(d.motivo_anulacion)}</span>` : ""}
         ${carpeta === "realizados" && d.fecha_entrega ? `<span class="motivo">Entregado el ${esc(fechaHora(d.fecha_entrega))}${porQuien(d.entregado_por)}</span>` : ""}</td>
       <td>${esc(d.grupo)}</td>
-      <td class="secundario">${esc(d.modulo)}</td>
-      <td class="num">${textoFaltas(d.fi, d.fj, d.criterio)}</td>
-      <td>${esc(d.fecha)}</td>
-      <td class="secundario">${esc(d.profesor)}</td>
+      <td class="secundario col-modulo"><span class="recorte" title="${esc(d.modulo)}">${esc(d.siglas || d.modulo)}</span></td>
+      <td class="num col-faltas">${textoFaltas(d.fi, d.fj, d.criterio)}</td>
+      <td class="col-fecha">${esc(d.fecha)}</td>
+      <td class="secundario col-profesor"><span class="recorte" title="${esc(d.profesor)}">${esc(d.profesor)}</span></td>
       <td class="acciones-fila">
-        ${d.pdf ? `<a class="enlace" href="${url}" target="_blank">Ver</a>` : ""}
-        <a class="enlace" href="${url}&descargar=1">Descargar</a>
-        ${carpeta !== "anulados" ? `<button class="enlace" data-correo="${esc(d.ruta)}" title="${d.correo ? `Preparar el correo para ${esc(d.correo)}` : "No hay correo de este alumno/a: habrá que escribirlo"}">Correo</button>` : ""}
-        ${carpeta === "pendientes" ? `<button class="enlace" data-entregar="${esc(d.ruta)}">Entregado</button>` : ""}
+        ${d.pdf ? accionIcono("ver", "Ver el documento", `href="${url}" target="_blank"`, true) : ""}
+        ${accionIcono("descargar", "Descargar", `href="${url}&descargar=1"`, true)}
+        ${carpeta !== "anulados" ? accionIcono("correo", d.correo ? `Enviar por correo a ${d.correo}` : "Enviar por correo (no hay correo de este alumno/a: habrá que escribirlo)", `data-correo="${esc(d.ruta)}"`) : ""}
+        ${carpeta === "pendientes" ? accionIcono("entregado", "Marcar como entregado", `data-entregar="${esc(d.ruta)}"`) : ""}
       </td></tr>`;
   }).join("");
   const vacio = $("#avisos-vacio");
@@ -449,9 +517,11 @@ $("#tabla-avisos").addEventListener("change", ev => {
 });
 
 $("#tabla-avisos").addEventListener("click", ev => {
-  const ruta = ev.target.dataset?.entregar;
+  const boton = ev.target.closest("button");
+  if (!boton) return;
+  const ruta = boton.dataset.entregar;
   if (ruta) entregar(estadoAvisos.lista.filter(d => d.ruta === ruta));
-  const correo = ev.target.dataset?.correo;
+  const correo = boton.dataset.correo;
   if (correo) enviarCorreo(estadoAvisos.lista.filter(d => d.ruta === correo));
 });
 
@@ -642,6 +712,7 @@ async function cargarSimulacion() {
 }
 
 const ESTADO_SIM = tipo => tipo ? chipTipo(tipo) : "";
+const SIGUIENTE = '<span title="Se avisó en este mismo informe: la pérdida saldrá con el siguiente informe, no al reprocesar">con el siguiente informe</span>';
 
 function pintarSimulacion() {
   if (!simulacion) return;
@@ -667,15 +738,23 @@ function pintarSimulacion() {
     const filas = m.alumnos.map(a => `<tr class="${a.cambia ? "cambia" : ""}">
         <td>${esc(a.alumno)}</td><td class="num">${a.fi}</td><td class="num">${a.fj}</td>
         <td class="num">${esc(a.porcentaje_actual)} %</td>
-        <td>${ESTADO_SIM(a.tipo_actual)} <span class="secundario">${a.tipo_actual ? "" : esc(a.estado_actual)}</span></td>
+        <td>${ESTADO_SIM(a.tipo_actual)} <span class="secundario">${a.tipo_actual ? (a.siguiente_actual ? SIGUIENTE : "") : esc(a.estado_actual)}</span></td>
         <td class="num">${esc(a.porcentaje_simulado)} %</td>
-        <td>${ESTADO_SIM(a.tipo_simulado)} <span class="secundario">${a.tipo_simulado ? "" : esc(a.estado_simulado)}</span></td></tr>`).join("");
+        <td>${ESTADO_SIM(a.tipo_simulado)} <span class="secundario">${a.tipo_simulado ? (a.siguiente_simulado ? SIGUIENTE : "") : esc(a.estado_simulado)}</span></td></tr>`).join("");
+    const pendientesYa = m.reprocesar_avisos + m.reprocesar_perdidas;
+    const botonReprocesar = pendientesYa ? `<button class="boton principal" data-reprocesar-sim='${esc(JSON.stringify({ id: m.id_informe, avisos: m.reprocesar_avisos, perdidas: m.reprocesar_perdidas }))}'
+        title="Vuelve a pasar el último informe con el criterio actual y genera ya lo que falte">Reprocesar (${pendientesYa})</button>` : "";
     return `<div class="tarjeta simulacion-modulo">
       <div class="cabeza-sim"><div><h3>${esc(m.nombre)} <small>· ${esc(m.unidad)} · ${esc(m.profesor)} · informe del ${esc(m.informe)}</small></h3>
         <div class="secundario">${esc(m.horas)} h · 7,5 % = ${esc(m.umbral_75)} · 15 % = ${esc(m.umbral_15)} ·
           ahora cuentan: <b>${esc(m.nombre_actual)}</b></div></div>
-        <button class="boton suave" data-cambiar-criterio='${esc(JSON.stringify({ unidad: m.unidad, siglas: m.siglas, nombre: m.nombre, fila: m.fila, criterio: m.criterio_simulado }))}'>
-          Pasar a «${esc(CRITERIO_CORTO[m.criterio_simulado])}»…</button></div>
+        <div class="botones-sim">${botonReprocesar}<button class="boton suave" data-cambiar-criterio='${esc(JSON.stringify({ unidad: m.unidad, siglas: m.siglas, nombre: m.nombre, fila: m.fila, criterio: m.criterio_simulado }))}'>
+          Pasar a «${esc(CRITERIO_CORTO[m.criterio_simulado])}»…</button></div></div>
+      ${pendientesYa ? `<p class="resumen-sim">Con el criterio actual ${pendientesYa === 1 ? "falta" : "faltan"} por generar
+        ${[m.reprocesar_avisos ? plural(m.reprocesar_avisos, "aviso del 7,5 %", "avisos del 7,5 %") : "",
+           m.reprocesar_perdidas ? plural(m.reprocesar_perdidas, "pérdida del 15 %", "pérdidas del 15 %") : ""].filter(Boolean).join(" y ")}
+        con este informe${m.reprocesar_anulados ? ` (${m.reprocesar_anulados === pendientesYa && pendientesYa === 1 ? "se anuló" : `${m.reprocesar_anulados} se ${m.reprocesar_anulados === 1 ? "anuló" : "anularon"}`} antes)` : ""}:
+        <b>Reprocesar</b> ${pendientesYa === 1 ? "lo genera ya (si no, saldrá" : "los genera ya (si no, saldrán"} con el siguiente informe); antes de generar nada te deja elegir.</p>` : ""}
       <p class="resumen-sim">${resumen}</p>
       ${m.alumnos.length ? `<table class="tabla"><thead><tr><th>Alumno/a</th><th class="num">FI</th><th class="num">FJ</th>
         <th class="num">% (${esc(CRITERIO_CORTO[m.criterio_actual])})</th><th>Ahora</th>
@@ -687,25 +766,39 @@ function pintarSimulacion() {
 $("#filtro-texto").addEventListener("input", () => { if ($("#simular-criterio").checked) pintarSimulacion(); });
 
 $("#panel-simulacion").addEventListener("click", async ev => {
-  const datos = ev.target.dataset?.cambiarCriterio;
+  const boton = ev.target.closest("button");
+  if (boton?.dataset.reprocesarSim) {
+    const r = JSON.parse(boton.dataset.reprocesarSim);
+    if (await reprocesar(r.id)) cargarAvisos();
+    return;
+  }
+  const datos = boton?.dataset.cambiarCriterio;
   if (!datos) return;
   const m = JSON.parse(datos);
-  if (!await confirmarCriterio(m, m.criterio)) return;
+  const decision = await confirmarCriterio(m, m.criterio, true);
+  if (!decision) return;
   try {
     const modulo = (await api("/api/modulos")).modulos.find(x => x.fila === m.fila);
     if (!modulo) throw new Error("Ese módulo ya no está en la hoja; recarga la página");
     await api("/api/modulo/actualizar", { fila: m.fila, horas: modulo.horas, nombre: modulo.nombre,
       siglas: modulo.siglas, criterio: m.criterio });
-    tostada(`${m.nombre}: ahora cuentan ${CRITERIO_FRASE[m.criterio]}`, "ok");
-    cargarSimulacion();
+    if (decision.reprocesar) {
+      tostada(`${m.nombre}: ahora cuentan ${CRITERIO_FRASE[m.criterio]}`, "ok");
+      await reprocesar(decision.reprocesar);
+      cargarAvisos();
+    } else {
+      tostada(`${m.nombre}: ahora cuentan ${CRITERIO_FRASE[m.criterio]}`, "ok");
+      cargarSimulacion();
+    }
   } catch (e) { error(e); }
 });
 
 /**
  * Antes de cambiar el criterio de faltas de un módulo: cuenta qué saldría con el último informe y pide confirmación.
- * m: {unidad, siglas, nombre}; nuevo: "FI" o "FI+FJ". Devuelve true si se confirma.
+ * m: {unidad, siglas, nombre}; nuevo: "FI" o "FI+FJ". Devuelve false si se cancela; si se confirma, true o, con
+ * ofrecerReprocesar y algo que generar ya, {reprocesar: id del informe} si se elige «Cambiar y reprocesar».
  */
-async function confirmarCriterio(m, nuevo) {
+async function confirmarCriterio(m, nuevo, ofrecerReprocesar = false) {
   let sim;
   try {
     sim = (await api(`/api/simulacion?${new URLSearchParams({ unidad: m.unidad, siglas: m.siglas, criterio: nuevo })}`)).modulos[0];
@@ -722,11 +815,21 @@ async function confirmarCriterio(m, nuevo) {
       (sim.dejan_de_salir ? `<p>${plural(sim.dejan_de_salir, "alumno/a que ahora recibiría un aviso ya no lo recibiría",
         "alumnos/as que ahora recibirían un aviso ya no lo recibirían")}.</p>` : "");
   }
+  const ya = sim ? sim.reprocesar_avisos_simulado + sim.reprocesar_perdidas_simulado : 0;
+  const botones = [{ texto: "Cancelar", valor: false }, { texto: "Cambiar el criterio", clase: ya && ofrecerReprocesar ? "" : "principal", valor: true }];
+  if (ya && ofrecerReprocesar) {
+    botones.push({ texto: "Cambiar y reprocesar ya", clase: "principal", valor: { reprocesar: sim.id_informe } });
+    efecto += `<p>Si además <b>reprocesas</b> el último informe, se generan ya <b>${[
+      sim.reprocesar_avisos_simulado ? plural(sim.reprocesar_avisos_simulado, "aviso del 7,5 %", "avisos del 7,5 %") : "",
+      sim.reprocesar_perdidas_simulado ? plural(sim.reprocesar_perdidas_simulado, "pérdida del 15 %", "pérdidas del 15 %") : ""]
+      .filter(Boolean).join(" y ")}</b>, con la fecha de ese informe.</p>`;
+  }
   return await dialogo("Cambiar las faltas que cuentan",
     `<p><b>${esc(m.nombre)}</b> (${esc(m.unidad)}) pasará a contar <b>${esc(CRITERIO_FRASE[nuevo])}</b>.</p>${efecto}
-     <p class="nota">Los avisos ya emitidos no cambian. El nuevo criterio se aplica desde el siguiente informe que se procese.
+     <p class="nota">Los avisos ya emitidos no cambian. El nuevo criterio se aplica desde el siguiente informe que se procese
+       o al reprocesar el último (botón «Reprocesar» en la simulación o en Informes → Informes ya procesados).
        La pérdida del 15 % sigue exigiendo un aviso del 7,5 % en un informe anterior y más faltas desde entonces.</p>`,
-    [{ texto: "Cancelar", valor: false }, { texto: "Cambiar el criterio", clase: "principal", valor: true }]);
+    botones);
 }
 
 async function contarPendientes() {

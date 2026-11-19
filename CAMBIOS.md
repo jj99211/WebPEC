@@ -8,6 +8,29 @@ Numeración **X.YY**:
 La versión en uso está en el fichero `VERSION` y se ve junto al nombre de la aplicación.
 Cada versión queda guardada en git con su etiqueta (`git tag` las muestra).
 
+## 3.50 — 2026-11-19
+
+- **Reprocesar** el último informe de un módulo (Informes → Informes ya procesados, y en la simulación de Avisos):
+  lo vuelve a pasar con los datos de ahora y genera al momento los avisos que falten, con la fecha del informe, sin
+  esperar a un informe nuevo de Raíces. Sirve tras anular un aviso por un error de datos o tras cambiar el criterio de
+  faltas. Lo ya emitido no se repite. Solo el último de cada módulo (los informes de Raíces son acumulados). Antes de
+  generar, muestra la lista de lo que falta con casillas; lo que ya se había anulado (quizá a propósito) sale sin
+  marcar y con el motivo de la anulación.
+- **Dos informes del mismo día** (p. ej. mañana y tarde): antes el segundo se quedaba como «Ya procesado» y no se
+  procesaba nunca. Ahora, si trae más faltas, sale como «Más reciente del mismo día», se procesa (solo salen los
+  avisos nuevos) y sustituye al anterior, que se borra. Si es igual o más antiguo, sigue como «Ya procesado».
+- **Cambiar el criterio y aplicarlo ya:** al pasar un módulo a «FI + FJ» (o a «Solo FI») desde la simulación, el
+  botón «Cambiar y reprocesar ya» genera en ese momento los avisos del criterio nuevo. La simulación indica también
+  lo que falta por generar con el criterio actual (botón «Reprocesar») y marca como «con el siguiente informe» las
+  pérdidas del 15 % que no pueden salir al reprocesar (aviso dado en ese mismo informe).
+- **Avisos más compactos:** la tabla cabe sin desplazamiento horizontal. Las acciones de cada fila son iconos (ver,
+  descargar, correo, entregado) con su texto al pasar el ratón; el módulo aparece por sus siglas (nombre completo al
+  pasar el ratón) y el nombre del alumno/a se recorta si no cabe. En ventanas estrechas se ocultan las columnas del
+  profesor/a y de la fecha.
+- **Instrucciones rápidas** de una página dentro del programa (`INSTRUCCIONES.html` y `INSTRUCCIONES.pdf`), con
+  enlace desde el manual (pestaña Ayuda) y en `/instrucciones`.
+- Se quita `LEEME.txt`, que repetía el manual (se borra solo al actualizar); el manual recoge lo que solo estaba allí.
+
 ## 3.40 — 2026-11-12
 
 - **Faltas justificadas (FJ).** WebPEC lee ahora también la columna FJ de los informes de Raíces. Cada módulo tiene su
